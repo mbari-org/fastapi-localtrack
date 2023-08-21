@@ -1,0 +1,48 @@
+version: '3'
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: minio-server
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    environment:
+      - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-microtrack}
+      - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-ReplaceMePassword}
+    volumes:
+      - ./minio_data:/data
+    command: server --console-address ":9001" /data
+    networks:
+      - minio-net
+
+#  microtrack:
+#    build: src
+#    container_name: fastapi-microtrack
+#    depends_on:
+#      - minio
+#    ports:
+#      - "8000:80"
+#    environment:
+#      - MODEL_DESCRIPTION=${MODEL_DESCRIPTION:-"Megadetector"}
+#      - MODEL_INPUT_SIZE=1280
+#      - TMP_PATH=${TMP_PATH:-"/tmp"}
+#    networks:
+#      - minio-net
+#
+#  nginx:
+#    image: nginx:alpine
+#    container_name: nginx
+#    depends_on:
+#      - microtrack
+#    ports:
+#      - "80:80"
+#    volumes:
+#      - ./nginx/custom.conf:/etc/nginx/nginx.conf:ro
+#    networks:
+#      - minio-net
+
+networks:
+  minio-net:
+
+volumes:
+  minio_data:

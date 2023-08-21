@@ -1,0 +1,10 @@
+name: fastapi-microtrack
+channels:
+  - defaults
+  - conda-forge
+dependencies:
+  - python>=3.10
+  - pyodbc
+  - pip
+  - pip:
+    - -r requirements.txt
