@@ -18,5 +18,11 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
+      - name: Run nginx Docker container to serve test data
+        run: docker run --rm -d -p 8090:80 -v tests/data:/data:ro --name microtrack-nginx mbari/nginx
+
+      - name: Wait for Docker container to start
+        run: sleep 10
+
       - name: Run pytest
         run: pytest

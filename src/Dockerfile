@@ -1,5 +1,5 @@
 # ================================================================
-#  Docker image for fastapi-yolov5
+#  Docker image for fastapi-microtrack
 #  ================================================================
 FROM ubuntu:20.04
 LABEL vendor="MBARI"

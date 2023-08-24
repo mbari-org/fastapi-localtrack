@@ -16,7 +16,7 @@ mkdir -p tmp/models tmp/track_config
 cd tmp
 aws s3 cp --no-sign-request s3://902005-public/models/Megadetector/best.pt models/Megadetector.pt
 aws s3 cp --no-sign-request s3://902005-public/models/yolov5x_mbay_benthic_model.tar.gz models/yolov5x_mbay_benthic_model.tar.gz
-aws s3 cp --no-sign-request s3://902005-public/models/Megadetector/best.pt models/Megadetector.pt
+aws s3 cp tests/data/yolov5s.pt models/yolov5s.pt
 aws s3 cp --no-sign-request s3://902005-public/models/strong_sort_benthic.yaml track_config/strong_sort_benthic.yaml
 aws s3 sync . --profile  minio-microtrack --endpoint-url http://127.0.0.1:9000 s3://${ROOT_BUCKET}
 
