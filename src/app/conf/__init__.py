@@ -21,6 +21,7 @@ from app import logger
 from app.job.cache import JobCache
 from app.logger import info, debug
 from app.utils.misc import list_by_suffix
+from urllib.parse import urlparse
 
 if 'TMP_PATH' in os.environ:
     temp_path = Path(os.environ['TMP_PATH'])
@@ -45,8 +46,6 @@ info(f'Fetching models from s3://{s3_root_bucket}/{s3_model_prefix}')
 model_s3 = list_by_suffix(s3_root_bucket, s3_model_prefix, ['.gz', '.pt'])
 
 debug(f'Creating dictionary of model names to model paths')
-model_paths = {model.split('.')[0]: model for model in model_s3}
+model_paths = {Path(urlparse(model_s3[0]).path).stem: model for model in model_s3}
 
 local_config_ini_path = Path(__file__).parent / 'local_config.ini'
-
-minio_endpoint_url = 'http://localhost:9000'

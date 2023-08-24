@@ -15,12 +15,13 @@ Runs a FastAPI server to serve video detection and tracking models
 '''
 
 import asyncio
+import time
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
 
 from deepsea_ai.logger.job_cache import job_hash
-from fastapi import FastAPI, WebSocket, BackgroundTasks, HTTPException, Request, status
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -31,15 +32,17 @@ from app.runner.local import DockerRunner
 from app.utils.mailer import send_email
 from app.utils.misc import check_video_availability
 
+if model_paths and len(model_paths) > 0:
+    example_model = list(model_paths.keys())[0]
+else:
+    example_model = None
+
 
 class Job(BaseModel):
-    model: str | None = list(model_paths.keys())[0]
-    video_url: str | None = 'http://localhost:8090/V4361_20211006T162656Z_h265_1sec.mp4'
+    model: str | None = example_model
+    video: str | None = 'http://localhost:8090/V4361_20211006T162656Z_h265_1sec.mp4'
     metadata: str | None = None
 
-
-example_vid_url = 'http://localhost:8090/V4361_20211006T162656Z_h265_1sec.mp4'
-example_model = list(model_paths.keys())[0]
 
 app = FastAPI()
 
@@ -68,16 +71,11 @@ async def send_notification_email(email_address):
     info(f"Email notification sent to {email_address}")
 
 
-async def perform_io_task(task_name: str, video_url: str, model_s3: str, email: str = None):
-    # Simulate an I/O-bound task
-    # await asyncio.sleep(5)
-
-    # Set the job status to running
-    info(f"Running I/O Task '{task_name}'")
-    job_cache.set_job(task_name, 'LOCAL', [video_url], JobStatus.RUNNING)
+def run_job(job_name: str, video_url: str, model_s3: str, email=None):
+    info(f"Running '{job_name}'")
 
     # Create a docker runner instance and run it asynchronously
-    job_uuid = job_hash(task_name)
+    job_uuid = job_hash(job_name)
     instance = DockerRunner(job_uuid, video_url, model_s3, track_s3=None, args=None, metadata=None)
 
     # Make a prefix for the output based on the video path (sans http) and the current time
@@ -90,16 +88,23 @@ async def perform_io_task(task_name: str, video_url: str, model_s3: str, email: 
         # output_s3 = f"s3://{s3_root_bucket}/{s3_track_prefix}{key}/output"
         output_s3 = f"s3://{s3_root_bucket}/{s3_track_prefix}"
 
-    await instance.run(output_s3)
+    instance.run(output_s3)
+    job_cache.set_job(job_name, 'LOCAL', [video_url], JobStatus.RUNNING)
 
-    # The job is complete if it produces a compressed file
-    out_tar = (temp_path / task_name / 'output' / f"{video_url.split('.')[0]}.tar.gz")
+    # Check if the job is complete every 5 seconds and timeout after 5 minutes
+    while not instance.is_complete():
+        time.sleep(5)
+        if instance.is_complete():
+            break
 
-    if out_tar.exists():
-        job_cache.set_job(task_name, 'LOCAL', [video_url], JobStatus.SUCCESS)
+    # The job is successful if it produces a non-zero compressed file
+    out_tar = (temp_path / job_uuid / 'output' / f"{video_s3.stem}.tracks.tar.gz")
+
+    if out_tar.exists() and out_tar.stat().st_size > 0:
+        job_cache.set_job(job_name, 'LOCAL', [video_url], JobStatus.SUCCESS)
     else:
-        job_cache.set_job(task_name, 'LOCAL', [video_url], JobStatus.FAILED)
-    info(f"I/O Task '{task_name}' completed")
+        job_cache.set_job(job_name, 'LOCAL', [video_url], JobStatus.FAILED)
+    info(f"Job '{job_name}' ended with status {job_cache.get_job_by_uuid(job_uuid)[JobIndex.STATUS]}")
 
 
 @app.get("/")
@@ -109,8 +114,8 @@ async def root():
 
 @app.get("/health", status_code=status.HTTP_200_OK)
 async def root():
-    # TODO: check if the models are available
-    # Check if docker is available
+    # TODO: check if at least one model is available
+    # TODO: check if docker is available
     return {"message": "OK"}
 
 
@@ -119,42 +124,49 @@ async def read_models():
     return {"model": list(model_paths.keys())}
 
 
-@app.post("/process")
-async def process_task(background_tasks: BackgroundTasks, model: str = example_model, video_url: str = example_vid_url):
-    # data = jsonable_encoder(item)
+@app.post("/predict", status_code=status.HTTP_200_OK)
+async def process_task(background_tasks: BackgroundTasks, item: Job):
+    data = jsonable_encoder(item)
+    video = data['video']
+    model = data['model']
 
     # If the video cannot be reached return a 400 error
-    if not check_video_availability(video_url):
-        raise NotFoundException(name=video_url)
+    if not check_video_availability(video):
+        raise NotFoundException(name=video)
 
     # If the model not exist, return a 404 error
     if model not in model_paths.keys():
         raise NotFoundException(name=model)
 
     # Create a name for the job based on the video prefix and model name
-    video_name = video_url.split('=')[-1]
+    video_name = video.split('=')[-1]
     job_name = f"{model}-{video_name}"
+    model_s3 = model_paths[model]
 
     # Add the job to the cache and run it in the background
-    job_cache.set_job(job_name, 'LOCAL', [video_url], JobStatus.QUEUED)
-    background_tasks.add_task(perform_io_task, "Task 1", video_url, model)
+    job_cache.set_job(job_name, 'LOCAL', [video], JobStatus.QUEUED)
+    background_tasks.add_task(run_job, job_name, video, model_s3)
     job_uuid = job_hash(job_name)
-    return {"message": f"Video {video_url} queued for processing", "job_uuid": job_uuid}
+    return {"message": f"Video {video} queued for processing",
+            "job_uuid": job_uuid,
+            "job_name": job_name}
 
 
-@app.get("/status/{job_uuid}")
-async def get_status(job_uuid: str):
+@app.get("/status_by_uuid/{job_uuid}")
+async def get_status_by_uuid(job_uuid: str):
     job = job_cache.get_job_by_uuid(job_uuid)
 
     if job:
-        # Get the cluster this job is running on and check the status
-        cluster = job[JobIndex.CLUSTER]
+        return {"status": job[JobIndex.STATUS]}
 
-        # # Get the cluster by name
-        # for model_cluster in model_clusters:
-        #     if model_cluster.model_name == cluster:
-        #         # Get the status of the job
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
 
+
+@app.get("/status_by_name/{job_name}")
+async def get_status_by_name(job_name: str):
+    job = job_cache.get_job_by_uuid(job_name)
+
+    if job:
         return {"status": job[JobIndex.STATUS]}
 
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")

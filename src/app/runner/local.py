@@ -52,6 +52,7 @@ class DockerRunner:
         """
         cfg = Config(conf.local_config_ini_path.as_posix())
 
+        self.container = None
         self.args = args
         self.metadata = metadata
         self.video_url = video_url
@@ -70,12 +71,28 @@ class DockerRunner:
         if not self.processjobconfig_json_path.exists():
             err(f'Processing job config file {self.processjobconfig_json_path} missing')
 
-        self.container_image = cfg('minio', 'strongsort_container')  # docker image for running the strongsort track pipeline
+        self.container_name = cfg('minio',
+                                  'strongsort_container')  # docker image for running the strongsort track pipeline
 
         self.in_path = (temp_path / job_uuid / 'input')
         self.out_path = (temp_path / job_uuid / 'output')
         self.in_path.mkdir(parents=True, exist_ok=True)
         self.out_path.mkdir(parents=True, exist_ok=True)
+
+    def __del__(self):
+        debug(f'Deleting {self.__class__.__name__} instance')
+
+        debug(f'Stopping and removing {self.container_name} container')
+        if self.container:
+            self.container.stop()
+            self.container.remove()
+
+        # Clean up the input and output directories
+        debug(f'Removing {self.in_path.as_posix()} and {self.out_path.as_posix()}')
+        if self.in_path.exists():
+            shutil.rmtree(self.in_path.as_posix())
+        if self.out_path.exists():
+            shutil.rmtree(self.out_path.as_posix())
 
     async def run(self, output_s3: str):
         """
@@ -86,74 +103,66 @@ class DockerRunner:
         info(f'Processing {self.video_url} with {self.model_s3} and {self.track_s3} to {output_s3}<----')
 
         # Download the video at the self.video_url to the self.in_path
-        # if download_video(self.video_url, self.in_path):
-        #     info(f'Video {self.video_url} downloaded to {self.in_path.as_posix()}')
-        # else:
-        #     err(f'Failed to download {self.video_url} to {self.in_path.as_posix()}')
-        #     return
+        if download_video(self.video_url, self.in_path):
+            info(f'Video {self.video_url} downloaded to {self.in_path.as_posix()}')
+        else:
+            err(f'Failed to download {self.video_url} to {self.in_path.as_posix()}. Are you sure your nginx server is running?')
+            return
 
-        # if 'AWS_SHARED_CREDENTIALS_FILE' in os.environ:
-        #     cred_path = Path(os.environ['AWS_SHARED_CREDENTIALS_FILE'])
-        # else:
-        # Attempt to set to the HOME directory
-        cred_path = Path.home() / '.aws' / 'credentials'
+        if 'AWS_SHARED_CREDENTIALS_FILE' in os.environ:
+            cred_path = Path(os.environ['AWS_SHARED_CREDENTIALS_FILE'])
+        else:
+            # Attempt to set to the HOME directory
+            cred_path = Path.home() / '.aws' / 'credentials'
 
-        pipeline_path = Path(__file__).parent / 'pipeline'
+        info(f'Using credentials file {cred_path.as_posix()}')
 
         # Set volume bindings
         volumes = {
             cred_path.as_posix(): {'bind': '/root/.aws/credentials', 'mode': 'ro'},
-            # TODO: remove this as this file is automatically created by docker image
-            # self.processjobconfig_json_path: {'bind': '/opt/ml/config/processingjobconfig.json', 'mode': 'ro'},
-            pipeline_path.as_posix(): {'bind': '/app/pipeline', 'mode': 'ro'},
             self.in_path.as_posix(): {'bind': '/opt/ml/processing/input'},
             self.out_path.as_posix(): {'bind': '/opt/ml/processing/output'},
         }
-        # os.environ['AWS_SHARED_CREDENTIALS_FILE'] = ""
-        os.environ['SERVICE_ENDPOINT_URL'] = 'http://192.168.224.2:9000'
-        client = docker.from_env()
-        # os.environ['AWS_SHARED_CREDENTIALS_FILE'] = cred_path.as_posix()
 
-        # Setup the command to run
+        # Setup the environment variables to pass to the docker self.container AWS_SHARED_CREDENTIALS_FILE is not
+        # required as the default user is root and this is the default location; included for clarity
+        env = {'AWS_SHARED_CREDENTIALS_FILE': '/root/.aws/credentials'}
+        # Add in the PROFILE if it exists
+        if 'AWS_DEFAULT_PROFILE' in os.environ:
+            env['AWS_DEFAULT_PROFILE'] = os.environ['AWS_DEFAULT_PROFILE']
+
+        client = docker.from_env(environment=env)
+
+        # Setup the command to run per the AWS SageMaker standard
         command = (f"dettrack --model-s3 {self.model_s3} "
                    f"--config-s3 {self.track_s3} "
                    f"-i /opt/ml/processing/input "
                    f"-o /opt/ml/processing/output")
 
-        # Add the optional arguments if they exist
+        # Add the optional arguments if they exist; if these are missing, defaults are included in the Docker container
         if self.args:
             command += f" --args \"{self.args}\""
 
         info(f'Running {command}...')
 
         # Run the docker container
-        container = client.containers.run(
-            image=self.container_image,
+        self.container = client.containers.run(
+            image=self.container_name,
             command=command,
             volumes=volumes,
             detach=True,
-            network_mode='host',
-            # networks=['minio-net'],
+            environment=env,
+            network_mode='host'
         )
-
-        for line in container.logs(stream=True):
+        #
+        for line in self.container.logs(stream=True):
             output_line = line.decode('utf-8')
-            debug(f'Docker container: {output_line}')
+            debug(output_line)
             if 'Error' in output_line:
                 err(output_line)
-                container.stop()
-                container.remove()
-                return
-            # debug(line.decode('utf-8'))
-            # print(line.decode('utf-8'))
 
-        container.stop()
-        container.remove()
-        os.environ['SERVICE_ENDPOINT_URL'] = conf.minio_endpoint_url
-
-        # while container.status == 'running':
-        #     debug(container.logs())
-        #     await asyncio.sleep(5)
+        # Wait for the container to finish
+        self.container.wait()
 
         # insert the metadata into the processing job config file
         if self.metadata:
@@ -172,51 +181,47 @@ class DockerRunner:
         debug(f'Copying {self.processjobconfig_json_path} to {self.out_path.as_posix()}')
         shutil.copy(self.processjobconfig_json_path.as_posix(), self.out_path.as_posix())
 
-        # upload the results to s3
+        # Upload the results to s3
         p = urlparse(output_s3)  # remove trailing slash
         upload_files_to_s3(bucket=p.netloc,
                            s3_path=p.path.lstrip('/'),
                            local_path=self.out_path.as_posix(),
                            suffixes=['.tar.gz', '.json'])
 
-        # remove the input and output directories
-        info(f'Removing {self.in_path.as_posix()} and {self.out_path.as_posix()}')
-        # self.in_path.unlink()
-        # self.out_path.unlink()
-
         info(f'Finished processing {self.video_url} with {self.model_s3} and {self.track_s3} to {output_s3}')
-        await asyncio.sleep(5)
 
-    def teardown(self):
-        info(f'Tear down not current implemented.')
-        pass
+    def is_complete(self):
+        # Complete if the output directory has a tar.gz file in it
+        if len(list(self.out_path.glob('*.tar.gz'))) > 0:
+            return True
+        else:
+            return False
 
 
 async def main():
     job_uuid = job_hash("test")
     # Create a docker runner and run it
     p = DockerRunner(job_uuid=job_uuid,
-                     video_url='http://localhost:8090/V4361_20211006T162656Z_h265_1sec.mp4',
-                     model_s3='s3://m3-video-processing/models/yolov5x_mbay_benthic_model.tar.gz',#Megadetector.pt',
+                     video_url='http://localhost:8090/video/V4361_20211006T163856Z_h265_1min.mp4',
+                     model_s3='s3://m3-video-processing/models/yolov5x_mbay_benthic_model.tar.gz',
                      track_s3='s3://m3-video-processing/track_config/strong_sort_benthic.yaml',
-                     args='--iou-thres 0.5 --conf-thres 0.01')
+                     args='--iou-thres 0.5 --conf-thres 0.01 --agnostic-nms --max-det 100')
     output_s3 = f's3://m3-video-processing/{s3_track_prefix}/test/{job_uuid}'
     await p.run(output_s3)
-    p.teardown()
+    # Wait for the container to finish
+    num_tries = 0
+    while not p.is_complete() and num_tries < 3:
+        await asyncio.sleep(30)
+        num_tries += 1
+
+    if p.is_complete():
+        info(f'Processing complete: {p.is_complete()}')
+    else:
+        err(f'Processing complete: {p.is_complete()}')
 
 
 if __name__ == '__main__':
+    os.environ['AWS_DEFAULT_PROFILE'] = 'minio-microtrack'
     temp_path = pathlib.Path(__file__).parent / 'tmp'
     logger.create_logger_file(temp_path / 'logs', 'local')
-
-    # env_path = temp_path / 'aws' / 'credentials.txt'
-    # os.environ['AWS_SHARED_CREDENTIALS_FILE'] = env_path.as_posix()
-    # env_path.parent.mkdir(parents=True, exist_ok=True)
-    # # Add the credentials file to the environment
-    # with env_path.open('w+') as f:
-    #     f.write('[minio-microtrack]\n')
-    #     f.write('aws_access_key_id = microtrack\n')
-    #     f.write('aws_secret_access_key = ReplaceMePassword\n')
-    #     f.write('endpoint_url = http://127.0.0.1:9000\n')
-    #     f.write('region = us-east-1\n')
     asyncio.run(main())

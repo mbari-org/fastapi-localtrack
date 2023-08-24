@@ -32,9 +32,10 @@ def list_by_suffix(bucket: str, prefix: str, suffixes: list[str]) -> list[str]:
     :return: list of objects with the given suffixes, s3://bucket/prefix/object.suffix
     """
     if 'AWS_DEFAULT_PROFILE' in os.environ:
+        info(f'Using AWS profile {os.environ["AWS_DEFAULT_PROFILE"]}')
         session = boto3.Session(profile_name=os.environ['AWS_DEFAULT_PROFILE'])
     else:
-        session = boto3.Session(profile_name="minio-microtrack")
+        session = boto3.Session()
     s3 = session.client('s3')
     objects = []
 
@@ -53,7 +54,6 @@ def list_by_suffix(bucket: str, prefix: str, suffixes: list[str]) -> list[str]:
     except Exception as e:
         exception(f'Error listing objects: {e}')
 
-
     return objects
 
 
@@ -71,9 +71,9 @@ def upload_files_to_s3(bucket: str, local_path: str, s3_path: str, suffixes: lis
 
     if 'AWS_DEFAULT_PROFILE' in os.environ:
         session = boto3.Session(profile_name=os.environ['AWS_DEFAULT_PROFILE'])
+        s3 = session.client('s3')
     else:
-        session = boto3.Session(profile_name="minio-microtrack")
-    s3 = session.client('s3')
+        s3 = boto3.client('s3')
 
     if suffixes is None:
         suffixes = ['tar.gz', 'json']
@@ -135,8 +135,8 @@ if __name__ == '__main__':
     # Get the path to the current file
     temp_path = pathlib.Path(__file__).resolve().parent / 'tmp'
     logger.create_logger_file(temp_path, 'misc')
-    check_video_availability('http://localhost:8090/V4361_20211006T162656Z_h265_1sec.mp4')
-    download_video('http://localhost:8090/V4361_20211006T162656Z_h265_1sec.mp4',
+    check_video_availability('http://localhost:8090/video/V4361_20211006T162656Z_h265_1sec.mp4')
+    download_video('http://localhost:8090/video/V4361_20211006T162656Z_h265_1sec.mp4',
                    temp_path / 'V4361_20211006T162656Z_h265_1sec-test.mp4')
-    download_video('http://localhost:8090/V4361_20211006T162656Z_h265_1sec.mp4',
+    download_video('http://localhost:8090/video/V4361_20211006T162656Z_h265_1sec.mp4',
                    temp_path)

@@ -212,11 +212,10 @@ class JobCache:
                     failed += 1
         return failed
 
-    def remove_job(self, job_name: str):
+    def remove_job_by_uuid(self, job_uuid: str):
         """
-        Remove a job from the cache. A job is uniquely identified by the hash of the job name
+        Remove a job from the cache by its uuid
         """
-        job_uuid = job_hash(job_name)
         self.db.rem(job_uuid)
 
         # get all the video files associated with the job and remove them from the cache
@@ -227,6 +226,14 @@ class JobCache:
 
         for video_uuid in to_remove:
             self.db.rem(video_uuid)
+        info(f"JobCache: Removed job {job_uuid} from cache")
+
+    def remove_job_by_name(self, job_name: str):
+        """
+        Remove a job from the cache. A job is uniquely identified by the hash of the job name
+        """
+        job_uuid = job_hash(job_name)
+        self.remove_job_by_uuid(job_uuid)
         info(f"JobCache: Removed job {job_name} from cache")
 
     def get_all(self) -> List[List[str]]:
@@ -256,14 +263,14 @@ if __name__ == '__main__':
     info(f'Getting job {name} {jc.get_job(name)}')
 
     # remove and clear them
-    jc.remove_job(name)
-    info(jc.get_job(name))
+    jc.remove_job_by_name(name)
+    info(jc.get_job_by_name(name))
     jc.clear()
     info(jc.get_all())
 
     # add a video to the cache
     jc.set_job(name, JobStatus.UNKNOWN, ["vid1.mp4", "vid2.mp4", "vid3.mp4"], JobStatus.RUNNING)
-    info(f'Getting job {name} {jc.get_job(name)}')
+    info(f'Getting job {name} {jc.get_job_by_name(name)}')
 
     # update the status of the video to RUNNING
     jc.set_media(name, "vid1.mp4", JobStatus.RUNNING)
@@ -299,4 +306,4 @@ if __name__ == '__main__':
     jc.create_report(name, Path.cwd())
 
     # clean-up
-    jc.remove_job(name)
+    jc.remove_job_by_name(name)
