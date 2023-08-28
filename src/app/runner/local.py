@@ -24,9 +24,9 @@ import shutil
 
 from urllib.parse import urlparse
 from deepsea_ai.logger.job_cache import job_hash
-from pathlib import Path
 from deepsea_ai.config.config import Config
-from app.conf import temp_path, s3_track_prefix
+from pathlib import Path
+from app.conf import temp_path, local_config_ini_path
 from app.logger import info, err, debug, exception
 from app import logger, conf
 from app.utils.misc import upload_files_to_s3, download_video
@@ -60,7 +60,7 @@ class DockerRunner:
         if track_s3:
             self.track_s3 = track_s3
         else:
-            self.track_s3 = cfg('minio', 'strongsort_track_config_s3')
+            self.track_s3 = cfg('minio', 's3_strongsort_track_config')
 
         if not self.track_s3.endswith('.yaml'):
             exception(f'Invalid track config {self.track_s3}')
@@ -151,10 +151,11 @@ class DockerRunner:
             command=command,
             volumes=volumes,
             detach=True,
+            # remove=True,
             environment=env,
             network_mode='host'
         )
-        #
+
         for line in self.container.logs(stream=True):
             output_line = line.decode('utf-8')
             debug(output_line)
@@ -190,7 +191,22 @@ class DockerRunner:
 
         info(f'Finished processing {self.video_url} with {self.model_s3} and {self.track_s3} to {output_s3}')
 
-    def is_complete(self):
+    def get_id(self):
+        """
+        Get the container id
+        :return: The container id if it exists, None otherwise
+        """
+        if self.container:
+            return self.container.id
+        else:
+            return None
+
+    def is_successful(self):
+        """
+        Check if the container is successfully complete
+        :return: True if the container is complete, False otherwise
+        """
+
         # Complete if the output directory has a tar.gz file in it
         if len(list(self.out_path.glob('*.tar.gz'))) > 0:
             return True
@@ -199,29 +215,31 @@ class DockerRunner:
 
 
 async def main():
+    cfg = Config(local_config_ini_path.as_posix())
+    track_prefix = cfg('minio', 's3_track_prefix')
     job_uuid = job_hash("test")
+
     # Create a docker runner and run it
     p = DockerRunner(job_uuid=job_uuid,
                      video_url='http://localhost:8090/video/V4361_20211006T163856Z_h265_1min.mp4',
                      model_s3='s3://m3-video-processing/models/yolov5x_mbay_benthic_model.tar.gz',
-                     track_s3='s3://m3-video-processing/track_config/strong_sort_benthic.yaml',
                      args='--iou-thres 0.5 --conf-thres 0.01 --agnostic-nms --max-det 100')
-    output_s3 = f's3://m3-video-processing/{s3_track_prefix}/test/{job_uuid}'
+    output_s3 = f's3://m3-video-processing/{track_prefix}/test/{job_uuid}'
     await p.run(output_s3)
     # Wait for the container to finish
     num_tries = 0
-    while not p.is_complete() and num_tries < 3:
+    while not p.is_successful() and num_tries < 3:
         await asyncio.sleep(30)
         num_tries += 1
 
-    if p.is_complete():
-        info(f'Processing complete: {p.is_complete()}')
+    if p.is_successful():
+        info(f'Processing complete: {p.is_successful()}')
     else:
-        err(f'Processing complete: {p.is_complete()}')
+        err(f'Processing complete: {p.is_successful()}')
 
 
 if __name__ == '__main__':
-    os.environ['AWS_DEFAULT_PROFILE'] = 'minio-microtrack'
+    os.environ['AWS_DEFAULT_PROFILE'] = 'minio-accutrack'
     temp_path = pathlib.Path(__file__).parent / 'tmp'
     logger.create_logger_file(temp_path / 'logs', 'local')
     asyncio.run(main())

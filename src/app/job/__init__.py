@@ -1,1 +1,1 @@
-from . import cache
+from .model import JobEntry, Job

@@ -7,7 +7,7 @@ __maintainer__ = "Danelle Cline"
 __email__ = "dcline at mbari.org"
 __doc__ = '''
 
-Logger for fastapi-microtrack. Logs to both a file and the console.
+Logger for fastapi-accutrack. Logs to both a file and the console.
 Creates a global data frame to store a summary of the results.
 
 @author: __author__
@@ -44,7 +44,7 @@ class CustomLogger(Singleton):
     summary_df = None
     output_path = Path.cwd()
 
-    def __init__(self, output_path: Path = Path.cwd(), output_prefix: str = "fastapi_microtrack"):
+    def __init__(self, output_path: Path = Path.cwd(), output_prefix: str = "fastapi_accutrack"):
         """
         Initialize the logger
         """
@@ -80,7 +80,7 @@ class CustomLogger(Singleton):
         return self.logger
 
 
-def create_logger_file(log_path: Path, prefix: str = "fastapi_microtrack"):
+def create_logger_file(log_path: Path, prefix: str = "fastapi_accutrack"):
     """
     Create a logger file
     :param log_path: Path to the log file

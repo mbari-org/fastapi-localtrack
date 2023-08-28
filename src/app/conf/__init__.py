@@ -17,6 +17,8 @@ and other configuration.
 '''
 import os
 from pathlib import Path
+
+from deepsea_ai.config.config import Config
 from app import logger
 from app.job.cache import JobCache
 from app.logger import info, debug
@@ -31,21 +33,13 @@ else:
 temp_path.mkdir(parents=True, exist_ok=True)
 info(f'Logging to {temp_path / "logs"}')
 
+# Create a logger to log to a subdirectory of the temp path
 logger = logger.create_logger_file(temp_path / 'logs')
+local_config_ini_path = Path(__file__).parent / 'local_config.ini'
 
-# Bucket for storing models, tracks, etc
-s3_root_bucket = 'm3-video-processing'
-s3_model_prefix = 'models'
-s3_track_config_prefix = 'track_config'
-s3_track_prefix = 'tracks'
+cfg = Config(local_config_ini_path.as_posix())
+s3_root_bucket = cfg('minio', 's3_root_bucket')
+s3_model_prefix = cfg('minio', 's3_model_prefix')
 
 info(f'Creating job cache in {temp_path / "job_cache"}')
 job_cache = JobCache(temp_path / 'job_cache')
-
-info(f'Fetching models from s3://{s3_root_bucket}/{s3_model_prefix}')
-model_s3 = list_by_suffix(s3_root_bucket, s3_model_prefix, ['.gz', '.pt'])
-
-debug(f'Creating dictionary of model names to model paths')
-model_paths = {Path(urlparse(model_s3[0]).path).stem: model for model in model_s3}
-
-local_config_ini_path = Path(__file__).parent / 'local_config.ini'

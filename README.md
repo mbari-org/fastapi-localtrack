@@ -3,7 +3,7 @@
 ![license-GPL](https://img.shields.io/badge/license-GPL-blue)
 [![Python](https://img.shields.io/badge/language-Python-blue.svg)](https://www.python.org/downloads/)
 
-**fastapi-microtrack** code is a lightweight API to process video. It uses the Python web framework [FastAPI](https://fastapi.tiangolo.com/).
+**fastapi-accutrack** code is a lightweight API to process video. It uses the Python web framework [FastAPI](https://fastapi.tiangolo.com/).
  
 # Requirements
 
@@ -15,8 +15,8 @@
 
 ## Clone the repository
 ```shell
-git clone http://github.com/mbari-org/fastapi-microtrack
-cd fastapi-microtrack
+git clone http://github.com/mbari-org/fastapi-accutrack
+cd fastapi-accutrack
 ```
 
 ## Configure minio
@@ -24,7 +24,7 @@ cd fastapi-microtrack
 [minio](https://min.io/) is an open source S3 compatible object store.  It is used to store models, track configuration files and results from track processing.  The docker-compose file will start a minio server on port 9000.  
 
 The default credentials are:
-- AWS Access Key ID [None]: **microtrack** 
+- AWS Access Key ID [None]: **accutrack** 
 - AWS Secret Access Key [None]: **ReplaceMePassword**.
 
 These can be changed in the docker-compose file, or by setting up a .env file with the keys
@@ -34,10 +34,10 @@ MINIO_ROOT_PASSWORD=<your new password>
 It is OK to leave the other fields blank, e.g. minio does not require a region.  
 ```shell
 pip install awscli
-aws configure --profile minio-microtrack
+aws configure --profile minio-accutrack
 ```
 
-## Start the FastAPI microtrack services
+## Start the FastAPI accutrack services
   
 ```shell
 docker-compose up -d

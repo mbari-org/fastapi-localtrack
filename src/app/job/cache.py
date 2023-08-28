@@ -4,36 +4,13 @@ from pathlib import Path
 from typing import List
 
 from deepsea_ai.logger.job_cache import job_hash
+from pydantic import ValidationError
 
 from app import __version__
 import app.logger as logger
+from app.job import JobEntry
+from app.job.model import JobStatus, MediaIndex, JobIndex
 from app.logger import info, err, warn
-
-
-# Enum for the status of a job
-class JobStatus:
-    SUCCESS = "SUCCESS"
-    FAILED = "FAILED"
-    QUEUED = "QUEUED"
-    RUNNING = "RUNNING"
-    UNKNOWN = "UNKNOWN"
-
-
-# Indexes into the micro database for Media and Job
-class MediaIndex:
-    NAME = 0
-    UUID = 1
-    UPDATE_TIME = 2
-    STATUS = 3
-
-
-class JobIndex:
-    NAME = 0
-    CLUSTER = 1
-    VIDEO_FILES = 2
-    CREATED_TIME = 3
-    UPDATE_TIME = 4
-    STATUS = 5
 
 
 class JobCache:
@@ -84,7 +61,7 @@ class JobCache:
         job_report_name = f"{job_name}, Total media: {num_media}, Created at: {created_time}, Last update: {last_update} "
 
         with open(output_path.as_posix(), 'w') as f:
-            f.write(f"fastapi-microtrack {__version__}\n")
+            f.write(f"fastapi-accutrack {__version__}\n")
             f.write(f"Job: {job_report_name}\n")
             f.write(f"==============================================================================================\n")
             f.write(f"Index, Media, Last Updated, Status\n")
@@ -106,7 +83,7 @@ class JobCache:
         return [self.db.get(key)[JobIndex.NAME] for key in self.db.getall() if
                 self.db.get(key)[MediaIndex.UUID] == job_uuid]
 
-    def set_media(self, job_name: str, media_file: str, status: str = JobStatus.RUNNING, update_dt: str = None):
+    def set_media(self, job_name: str, media_file: str, status: str, update_dt: str = None):
         """
         Add a video file to the cache, updating the status of the media if it already exists
         :param job_name: The name of the job
@@ -127,56 +104,59 @@ class JobCache:
 
         self.db.set(media_uuid, [media_file, job_uuid, update_dt, status])
 
-    def set_job(self, job_name: str, cluster: str, video_files: List[str], status: JobStatus):
+    def set_job(self, job: JobEntry):
         """
-        Add a video to a job in the cache. A job is uniquely identified by the job name
-        :param job_name: The name of the job
-        :param cluster: The cluster the job is running on
-        :param video_files: The video files associated with the job
-        :param status: The status of the job
+        Add a job in the cache. A job is uniquely identified by the job name
+        :param job: The job entry to add to the cache
         """
-        job_uuid = job_hash(job_name)
+        job_uuid = job_hash(job.name)
         j = self.db.get(job_uuid)
         if j:
             # get the video files and add the new video files if they are not already in the list
-            new_video_files = j[JobIndex.VIDEO_FILES]
-            for v in new_video_files:
-                if v not in video_files:
-                    video_files.append(v)
-                    info(f"JobCache: Added video file {v} to job {job_name} running on {cluster}")
+            media = j[JobIndex.MEDIA]
+            for v in media:
+                if v not in job.media:
+                    job.media.append(v)
+                    info(f"JobCache: Added video file {v} to job {job.name} running on {job.cluster}")
 
         # update the job
-        if status == JobStatus.FAILED:
-            err(f"Updating job {job_name} running on {cluster} in cache status to {status}")
+        if job.status == JobStatus.FAILED:
+            err(f"Updating job {job.name} running on {job.cluster} in cache status to {job.status}")
         else:
-            info(f"Updating job {job_name} running on {cluster} in cache status to {status}")
-        job = self.db.get(job_uuid)
+            info(f"Updating job {job.name} running on {job.cluster} in cache status to {job.status}")
+        job_existing = self.db.get(job_uuid)
         updated_timestamp = dt.utcnow().strftime("%Y%m%dT%H%M%S")
-        if job:  # if the job exists, keep the created timestamp
-            created_timestamp = job[JobIndex.CREATED_TIME]
+        if job_existing:  # if the job exists, keep the created timestamp
+            created_timestamp = job_existing[JobIndex.CREATED_TIME]
         else:
             created_timestamp = dt.utcnow().strftime("%Y%m%dT%H%M%S")
-        self.db.set(job_uuid, [job_name, cluster, video_files,
+
+        self.db.set(job_uuid, [job.name,
+                               job.cluster,
+                               job.model,
+                               job.media,
                                created_timestamp,
                                updated_timestamp,
-                               status])
+                               job.status,
+                               job.email,
+                               job.model])
 
-        info(f"Added job {job_name} running on {cluster} to cache")
+        info(f"Added job {job.name} running on {job.cluster} to cache")
 
-    def get_job_by_name(self, job_name: str) -> List[str]:
+    def get_job_by_name(self, job_name: str) -> List[JobEntry]:
         """
         Get a job from the cache. A job is uniquely identified by the hash of the job name
         """
         job_uuid = job_hash(job_name)
         return self.db.get(job_uuid)
 
-    def get_job_by_uuid(self, job_uuid: str) -> List[str]:
+    def get_job_by_uuid(self, job_uuid: str) -> List[JobEntry]:
         """
         Get a job from the cache by its uuid
         """
         return self.db.get(job_uuid)
 
-    def get_media(self, media_name: str, job_name: str) -> List[str]:
+    def get_media(self, media_name: str, job_name: str) -> List[JobEntry]:
         """
         Get a media from the cache. A media is uniquely identified by the hash of the media name
         :param media_name: The name of the media file
@@ -236,7 +216,7 @@ class JobCache:
         self.remove_job_by_uuid(job_uuid)
         info(f"JobCache: Removed job {job_name} from cache")
 
-    def get_all(self) -> List[List[str]]:
+    def get_all(self) -> List[List[JobEntry]]:
         """
         Get all jobs from the cache
         """
@@ -250,60 +230,79 @@ class JobCache:
         self.db.dump()
         info("Cleared cache")
 
+    def update_status(self, job_uuid: str, status: str):
+        # update the status of the job
+        job = self.db.get(job_uuid)
+        if job:
+            job[JobIndex.STATUS] = status
+            self.db.set(job_uuid, job)
+            info(f"JobCache: Updated job {job_uuid} status to {status}")
+
 
 if __name__ == '__main__':
     logger.create_logger_file(Path.cwd(), "test")
     jc = JobCache(Path.cwd())
-    name = "strongsort-yolov5-mbari315k-DocRicketts dive 1373 with mbari315k model"
-    jc.set_job(name, JobStatus.UNKNOWN, ["vid1.mp4", "vid2.mp4", "vid3.mp4"], JobStatus.RUNNING)
-    info(f'Getting job {name} {jc.get_job(name)}')
+    name = "Dive 1377 with megadetector"
+    try:
+        data = {
+            "name": name,
+            "cluster": "LOCAL",
+            "model": "megadetector",
+            "media": ["vid1.mp4", "vid2.mp4", "vid3.mp4"],
+            "created_time": datetime.utcnow(),
+            "update_time": datetime.utcnow(),
+            "status": JobStatus.RUNNING,
+            "email": "",
+            "runner_id": ""
+        }
+        job = JobEntry(**data)
+        jc.set_job(job)
+        info(f'Getting job {name} {jc.get_job_by_name(name)}')
 
     # add more videos to the job
-    jc.set_job(name, JobStatus.UNKNOWN, ["vid4.mp4", "vid5.mp4", "vid6.mp4"], JobStatus.RUNNING)
-    info(f'Getting job {name} {jc.get_job(name)}')
 
-    # remove and clear them
-    jc.remove_job_by_name(name)
-    info(jc.get_job_by_name(name))
-    jc.clear()
-    info(jc.get_all())
+        data = {
+            "name": name,
+            "cluster": "LOCAL",
+            "model": "megadetector",
+            "media": ["vid4.mp4", "vid5.mp4", "vid6.mp4"],
+            "created_time": datetime.utcnow(),
+            "update_time": datetime.utcnow(),
+            "status": JobStatus.RUNNING,
+            "email": "",
+            "runner_id": ""
+        }
+        jc.set_job(JobEntry(**data))
+        info(f'Getting job {name} {jc.get_job_by_name(name)}')
 
-    # add a video to the cache
-    jc.set_job(name, JobStatus.UNKNOWN, ["vid1.mp4", "vid2.mp4", "vid3.mp4"], JobStatus.RUNNING)
-    info(f'Getting job {name} {jc.get_job_by_name(name)}')
+        # update the status of the video to RUNNING
+        for status in [JobStatus.RUNNING, JobStatus.SUCCESS, JobStatus.FAILED, JobStatus.QUEUED, JobStatus.UNKNOWN]:
+            jc.set_media(name, "vid1.mp4", status)
+            info(f"Getting media {jc.get_media('vid1.mp4', name)}")
 
-    # update the status of the video to RUNNING
-    jc.set_media(name, "vid1.mp4", JobStatus.RUNNING)
+        for v in ['vid1.mp4', 'vid2.mp4', 'vid3.mp4', 'vid4.mp4']:
+            jc.set_media(name, v, JobStatus.SUCCESS)
+            info(f"Getting media {jc.get_media(v, name)}")
 
-    # update the status of the video to SUCCESS
-    jc.set_media(name, "vid1.mp4", JobStatus.SUCCESS)
+        # Set the last one to failed
+        jc.set_media(name, 'vid5.mp4', JobStatus.FAILED)
 
-    # update the status of the video to FAIL
-    jc.set_media(name, "vid1.mp4", JobStatus.FAILED)
+        # Four should be completed
+        info(f"Num completed {name} {jc.get_num_completed(name)}")
 
-    # update the status of the video to INFO
-    jc.set_media(name, "vid1.mp4", JobStatus.QUEUED)
+        # get all media files for the job
+        medias = jc.get_all_media_names(name)
+        info(f"Media files for job {name}: {medias}")
 
-    # update the status of the video to UNKNOWN
-    jc.set_media(name, "vid1.mp4", JobStatus.UNKNOWN)
+        # get the status of each media file
+        for m in medias:
+            info(f"Status of {m}: {jc.get_media(m, name)}")  # should be SUCCESS except for vid5.mp4
 
-    # update the status of the video to SUCCESS
-    jc.set_media(name, "vid1.mp4", JobStatus.SUCCESS)
-    jc.set_media(name, "vid2.mp4", JobStatus.SUCCESS)
-    jc.set_media(name, "vid3.mp4", JobStatus.SUCCESS)
-    jc.set_media(name, "vid4.mp4", JobStatus.SUCCESS)
-    jc.set_media(name, "vid5.mp4", JobStatus.FAILED)
+        # create a report for the job that has all the media files and their status
+        jc.create_report(name, Path.cwd())
 
-    # get all media files for the job
-    medias = jc.get_all_media_names(name)
-    info(f"Media files for job {name}: {medias}")
+        # clean-up
+        jc.remove_job_by_name(name)
 
-    # get the status of each media file
-    for m in medias:
-        info(f"Status of {m}: {jc.get_media(m, name)}")  # should be SUCCESS except for vid5.mp4
-
-    # create a report for the job that has all the media files and their status
-    jc.create_report(name, Path.cwd())
-
-    # clean-up
-    jc.remove_job_by_name(name)
+    except ValidationError as e:
+        err(e.json())
