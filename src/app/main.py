@@ -1,33 +1,32 @@
-# !/usr/bin/env python
-__author__ = "Danelle Cline"
-__copyright__ = "Copyright 2023, MBARI"
-__credits__ = ["MBARI"]
-__license__ = "GPL"
-__maintainer__ = "Danelle Cline"
-__email__ = "dcline at mbari.org"
-__doc__ = '''
+# fastapi-accutrack, Apache-2.0 license
+# Filename: qmanager/monitor.py
+# Description: Runs a FastAPI server to serve video detection and tracking models
 
-Runs a FastAPI server to serve video detection and tracking models
+import datetime
+import signal
+import threading
+import time
 
-@author: __author__
-@status: __status__
-@license: __license__
-'''
-
-import asyncio
+import docker
 from pathlib import Path
 from urllib.parse import urlparse
 
-from deepsea_ai.logger.job_cache import job_hash
-from fastapi import FastAPI, BackgroundTasks, HTTPException, Request, status
+from deepsea_ai.database.job.database_helper import get_status
+from deepsea_ai.database.job.misc import JobType, Status
+from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
-from app.conf import job_cache, cfg
-from app.job.cache import JobIndex, JobStatus
-from app.job.model import Job
+
+from pydantic import BaseModel
+from sqlalchemy.orm import sessionmaker
+
+from app.conf import cfg
+from app import __version__
+from app.job import Job2, Media2, init_db
 from app.logger import info, debug
-from app.utils.exceptions import NotFoundException
-from app.utils.mailer import send_email
+from app.qmanager import Monitor
+from app.utils.exceptions import NotFoundException, InvalidException
+from app.utils.mailer import send_email, validate_email
 from app.utils.misc import check_video_availability, list_by_suffix
 
 s3_root_bucket = cfg('minio', 's3_root_bucket')
@@ -41,6 +40,49 @@ model_paths = {Path(urlparse(model_s3[0]).path).stem: model for model in model_s
 
 app = FastAPI()
 
+running = True
+
+# Reset the database
+info(f'Initializing the database')
+session_maker = init_db(Path.cwd() / 'db', reset=True)
+
+def background_thread():
+    while running:
+        monitor = Monitor(session_maker)
+        monitor.run()
+        debug('Sleeping for 5 seconds')
+        time.sleep(5)
+
+# Start the background thread
+background_thread = threading.Thread(target=background_thread)
+background_thread.start()
+
+# Get an example model to use for the API documentation
+if model_paths and len(model_paths) > 0:
+    example_model = list(model_paths.keys())[0]
+else:
+    example_model = None
+
+
+# Define a function to handle the SIGINT signal (Ctrl+C)
+def handle_sigint(signum, frame):
+    global running
+    info("Received Ctrl+C signal. Stopping the application...")
+    print("Received Ctrl+C signal. Stopping the application...")
+    running = False
+
+
+# Set up the signal handler for SIGINT
+signal.signal(signal.SIGINT, handle_sigint)
+
+
+class PredictModel(BaseModel):
+    model: str | None = example_model
+    video: str | None = 'http://localhost:8090/video/V4361_20211006T162656Z_h265_1sec.mp4'
+    metadata: str | None = ''
+    email: str | None = 'dcline@mbari.org'
+
+
 # Exception handler for 404 errors
 @app.exception_handler(NotFoundException)
 async def nof_found_exception(request: Request, exc: NotFoundException):
@@ -50,25 +92,45 @@ async def nof_found_exception(request: Request, exc: NotFoundException):
     )
 
 
-async def send_notification_email(email_address):
-    # Simulate an I/O-bound task
-    await asyncio.sleep(2)
-    # Send an email notification
-    send_email(subject="Video Processing Complete",
-               message_body="Your video processing has completed",
-               to_email=email_address)
-    info(f"Email notification sent to {email_address}")
+def get_job_status(**kwargs):
+    """
+    Get the status of a job
+    :param kwargs: The job name or job id
+    :return: The status of the job or a 404 error
+    """
+    # if job_name in the kwargs
+    with session_maker.begin() as db:
+        job = None
+        if 'job_name' in kwargs:
+            job_name = kwargs['job_name']
+            job = db.query(Job2).filter(Job2.name == job_name).first()
+        if 'job_id' in kwargs:
+            job_id = kwargs['job_id']
+            job = db.query(Job2).filter(Job2.id == job_id).first()
+        if job:
+            job_status = get_status(job)
+            return {"status": job_status}
+        else:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job {kwargs} not found")
 
 
 @app.get("/")
 async def root():
-    return {"message": "Hello"}
+    return {"message": f'fastapi-accutrack {__version__}'}
 
 
 @app.get("/health", status_code=status.HTTP_200_OK)
 async def root():
-    # TODO: check if at least one model is available
-    # TODO: check if docker is available
+    # Check if docker is available
+    client = docker.from_env()
+    try:
+        client.ping()
+    except Exception as e:
+        return {"message": "docker not available"}, 503
+
+    if len(model_paths) == 0:
+        return {"message": "no models available"}, 503
+
     return {"message": "OK"}
 
 
@@ -78,46 +140,54 @@ async def read_models():
 
 
 @app.post("/predict", status_code=status.HTTP_200_OK)
-async def process_task(background_tasks: BackgroundTasks, item: Job):
+async def process_task(item: PredictModel):
     data = jsonable_encoder(item)
     video = data['video']
     model = data['model']
+    email = data['email']
+    metadata = data['metadata']
 
     # If the video cannot be reached return a 400 error
     if not check_video_availability(video):
         raise NotFoundException(name=video)
 
-    # If the model not exist, return a 404 error
+    # If the email is not valid, return a 400 error
+    if email and not validate_email(email):
+        raise InvalidException(name=email)
+
+    # If the model does not exist, return a 404 error
     if model not in model_paths.keys():
         raise NotFoundException(name=model)
 
-    # Create a name for the job based on the video prefix and model name
+    # Create a name for the job based on the video prefix, the model name and the timestamp
     video_name = video.split('=')[-1]
-    job_name = f"{model}-{video_name}"
+    job_name = f"{model}-{Path(video_name).stem}-{datetime.datetime.utcnow()}"
 
     # Add the job to the cache
-    job_cache.set_job(job_name, 'LOCAL', [video], JobStatus.QUEUED, data)
-    job_uuid = job_hash(job_name)
-    return {"message": f"Video {video} queued for processing",
-            "job_uuid": job_uuid,
-            "job_name": job_name}
+    with session_maker.begin() as db:
+        model_s3 = model_paths[model]
+        if email:
+            job = Job2(email=email, name=job_name, engine=model_s3, job_type=JobType.DOCKER)
+        else:
+            job = Job2(name=job_name, engine=model_s3, job_type=JobType.DOCKER)
+        media = Media2(name=video, status=Status.QUEUED, metadata_b64=metadata)
+        job.media.append(media)
+        db.add(job)
+
+    with session_maker.begin() as db:
+        job = db.query(Job2).filter(Job2.name == job_name).first()
+        job_id = job.id
+
+        return {"message": f"Video {video} queued for processing",
+                "job_id": job_id,
+                "job_name": job_name}
 
 
-@app.get("/status_by_uuid/{job_uuid}")
-async def get_status_by_uuid(job_uuid: str):
-    job = job_cache.get_job_by_uuid(job_uuid)
-
-    if job:
-        return {"status": job[JobIndex.STATUS]}
-
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+@app.get("/status_by_id/{job_id}")
+async def get_status_by_id(job_id: int):
+    return get_job_status(job_id=job_id)
 
 
 @app.get("/status_by_name/{job_name}")
 async def get_status_by_name(job_name: str):
-    job = job_cache.get_job_by_uuid(job_name)
-
-    if job:
-        return {"status": job[JobIndex.STATUS]}
-
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found")
+    return get_job_status(job_name=job_name)

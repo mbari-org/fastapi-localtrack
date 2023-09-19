@@ -1,3 +1,4 @@
+docker
 fastapi
 uvicorn
 boto3

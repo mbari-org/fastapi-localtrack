@@ -1,10 +1,7 @@
-from pathlib import Path
 from fastapi.testclient import TestClient
+from tests.conf.setup import init_credentials
+init_credentials()
 from app.main import app
-from app.conf import job_cache
-
-# Get the path of this file
-path = Path(__file__)
 
 # Create a test client
 client = TestClient(app)

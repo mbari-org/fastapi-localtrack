@@ -19,6 +19,7 @@ import os
 import boto3
 import pathlib
 import requests
+
 from app.logger import info, debug, err, exception
 from app import logger
 
@@ -84,6 +85,8 @@ def upload_files_to_s3(bucket: str, local_path: str, s3_path: str, suffixes: lis
                 for s in suffixes:
                     if obj.suffix == s:
                         debug(f'Uploading {obj.as_posix()} to s3://{bucket}/{s3_path}')
+                        # Remove any double slashes from the s3 path
+                        s3_path = s3_path.replace('//', '/')
                         s3.upload_file(obj.as_posix(), bucket, f'{s3_path}/{obj.name}')
     except Exception as e:
         exception(f'Error uploading files: {e}')

@@ -22,39 +22,34 @@ cd fastapi-accutrack
 ## Configure minio
 
 [minio](https://min.io/) is an open source S3 compatible object store.  It is used to store models, track configuration files and results from track processing.  The docker-compose file will start a minio server on port 9000.  
+ 
+```shell
+pip install awscli awscli-plugin-endpoint
+aws configure --profile minio-accutrack
+
+```
 
 The default credentials are:
 - AWS Access Key ID [None]: **accutrack** 
 - AWS Secret Access Key [None]: **ReplaceMePassword**.
 
-These can be changed in the docker-compose file, or by setting up a .env file with the keys
+The credentials can be changed in the docker-compose file, or by setting up a .env file **in the same directory**
+as this docker-compose.yml files with the keys
+```text
 MINIO_ACCESS_KEY=<your new kay>
 MINIO_ROOT_PASSWORD=<your new password>
-
-It is OK to leave the other fields blank, e.g. minio does not require a region.  
-```shell
-pip install awscli
-aws configure --profile minio-accutrack
 ```
 
-## Start the FastAPI accutrack services
+
+## Start the FastAPI services
   
 ```shell
-docker-compose up -d
-``` 
-
-To stop the server, run
-```shell
-docker-compose down
+./bin/start.sh
 ```
 
 Your server is now running at `http://localhost:3000/docs`
+Data is stored in the minio server at `http://localhost:9000`
 
-# Setup buckets and upload test data
-```shell
-./bin/setup.sh
-```
- 
 # Running
 
 ## Health Check

@@ -1,4 +1,4 @@
-name: fastapi-microtrack
+name: fastapi-accutrack
 channels:
   - defaults
   - conda-forge

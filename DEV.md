@@ -4,15 +4,18 @@ Install for local development with
 
 ## Follow the README.md instructions for installing the conda environment
 
-The tests require the test/runserver.sh script to be running in the background.
+The tests require the example data to be downloaded and a working web server that
+can service video with test video. This can be done with the following command:
 
 ```shell
+./bin/start.sh
 ./test/run_nginx.sh
 ```
 
 ```shell
 conda activate fastapi-microtrack
 export PYTHONPATH=$PWD/src
+export AWS_DEFAULT_PROFILE=minio-accutrack
 cd src/app && uvicorn main:app --reload
 ```
  

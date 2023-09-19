@@ -1,8 +1,21 @@
 import os
+import re
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
+from app.logger import info
+
+
+def validate_email(email):
+    email_pattern = r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,7}\b'
+    matches = re.findall(email_pattern, email)
+    # Check if the email is valid
+    if len(matches) > 0:
+        info(f"Email {email} is valid")
+        return True
+    else:
+        return False
 
 def send_email(subject, message_body, to_email):
     smtp_server = "mbarimail.mbari.org"

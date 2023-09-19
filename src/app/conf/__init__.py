@@ -20,10 +20,7 @@ from pathlib import Path
 
 from deepsea_ai.config.config import Config
 from app import logger
-from app.job.cache import JobCache
-from app.logger import info, debug
-from app.utils.misc import list_by_suffix
-from urllib.parse import urlparse
+from app.logger import info
 
 if 'TMP_PATH' in os.environ:
     temp_path = Path(os.environ['TMP_PATH'])
@@ -40,6 +37,3 @@ local_config_ini_path = Path(__file__).parent / 'local_config.ini'
 cfg = Config(local_config_ini_path.as_posix())
 s3_root_bucket = cfg('minio', 's3_root_bucket')
 s3_model_prefix = cfg('minio', 's3_model_prefix')
-
-info(f'Creating job cache in {temp_path / "job_cache"}')
-job_cache = JobCache(temp_path / 'job_cache')

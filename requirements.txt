@@ -1,9 +1,7 @@
 boto3
 docker==2.0.0
 requests
-pickledb
 pytest
 pandas
 fastapi[all]
 httpx
-deepsea-ai

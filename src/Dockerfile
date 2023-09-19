@@ -1,5 +1,5 @@
 # ================================================================
-#  Docker image for fastapi-microtrack
+#  Docker image for fastapi-accutrack
 #  ================================================================
 FROM ubuntu:20.04
 LABEL vendor="MBARI"

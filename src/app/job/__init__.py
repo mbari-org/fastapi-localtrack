@@ -1,1 +1,1 @@
-from .model import JobEntry, Job
+from .database import *
