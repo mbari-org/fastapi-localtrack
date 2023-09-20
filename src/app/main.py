@@ -79,6 +79,7 @@ class PredictModel(BaseModel):
     model: str | None = example_model
     video: str | None = 'http://localhost:8090/video/V4361_20211006T162656Z_h265_1sec.mp4'
     metadata: str | None = ''
+    args: str | None = '--conf-thres=0.01 --iou-thres=0.4 --max-det=100 --agnostic-nms --imgsz 640'
     email: str | None = 'dcline@mbari.org'
 
 
@@ -147,6 +148,7 @@ async def process_task(item: PredictModel):
     model = data['model']
     email = data['email']
     metadata = data['metadata']
+    args = data['args']
 
     # If the video cannot be reached return a 400 error
     if not check_video_availability(video):
@@ -168,9 +170,9 @@ async def process_task(item: PredictModel):
     with session_maker.begin() as db:
         model_s3 = model_paths[model]
         if email:
-            job = Job2(email=email, name=job_name, engine="", model=model_s3, job_type=JobType.DOCKER)
+            job = Job2(email=email, args=args, name=job_name, engine="", model=model_s3, job_type=JobType.DOCKER)
         else:
-            job = Job2(name=job_name, engine="", model=model_s3, job_type=JobType.DOCKER)
+            job = Job2(name=job_name, args=args, engine="", model=model_s3, job_type=JobType.DOCKER)
         media = Media2(name=video, status=Status.QUEUED, metadata_b64=json_b64_encode(metadata), updatedAt=datetime.datetime.utcnow())
         job.media.append(media)
         db.add(job)

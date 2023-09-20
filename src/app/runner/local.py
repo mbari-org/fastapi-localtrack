@@ -4,6 +4,7 @@
 
 import pathlib
 import time
+from datetime import datetime
 
 import docker
 import os
@@ -40,6 +41,7 @@ class DockerRunner:
         cfg = Config(conf.local_config_ini_path.as_posix())
 
         self.container = None
+        self.total_time = None
         self.args = args
         self.video_url = video_url
         self.model_s3 = model_s3
@@ -94,7 +96,7 @@ class DockerRunner:
         Proces the video with a local docker runner. Results are uploaded to the output_s3 location
         :return:
         """
-        info(f'Processing {self.video_url} with {self.model_s3} and {self.track_s3} to {self.output_s3}<----')
+        info(f'Processing {self.video_url} with {self.model_s3} and {self.track_s3} to {self.output_s3}')
 
         # Download the video at the self.video_url to the self.in_path
         if download_video(self.video_url, self.in_path):
@@ -131,6 +133,7 @@ class DockerRunner:
         info(f'Running {self.container_name} ...')
 
         # Run the docker container in detached mode with network mode host to allow access to the local minio server
+        start_utc = datetime.utcnow()
         self.container = client.containers.run(
             image=self.container_name,
             name=default_name,
@@ -149,9 +152,10 @@ class DockerRunner:
             if 'Error' in output_line:
                 err(output_line)
 
-        # Wait for the container to finish up to 1 hour
+        # Wait for the container to finish up to 2 hours
         info(f'Waiting for container {self.container.id} to finish')
-        self.container.wait(timeout=3600)
+        self.container.wait(timeout=7200)
+        self.total_time = datetime.utcnow() - start_utc
 
         # Check if the container is still running
         if self.container.status == 'running':
@@ -171,7 +175,14 @@ class DockerRunner:
                            local_path=self.out_path.as_posix(),
                            suffixes=['.tar.gz', '.json'])
 
-        info(f'Finished processing {self.video_url} with {self.model_s3} and {self.track_s3} to {self.output_s3}')
+        info(f'Finished processing {self.video_url} with {self.model_s3} and {self.track_s3} to {self.output_s3}.  Total processing time {self.total_time}. Started at {start_utc}')
+
+    def get_total_time(self):
+        """
+        Get the total processing time
+        :return: The total processing time
+        """
+        return self.total_time
 
     def get_id(self):
         """

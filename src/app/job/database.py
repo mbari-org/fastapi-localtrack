@@ -19,6 +19,8 @@ class Job2(Job):
     __table_args__ = {'extend_existing': True}
     __tablename__ = "job"
 
+    args = Column(String, nullable=False)
+
     email = Column(String, nullable=False)
 
     model = Column(String, nullable=False)
