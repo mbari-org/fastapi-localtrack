@@ -2,7 +2,6 @@
 # Filename: runner/local.py
 # Description: Docker runner to process videos locally
 
-import asyncio
 import pathlib
 import time
 
@@ -59,8 +58,8 @@ class DockerRunner:
         if not self.processjobconfig_json_path.exists():
             err(f'Processing job config file {self.processjobconfig_json_path} missing')
 
-        # if running this on a arm64 machine, use the arm64 docker image
-        if os.uname().machine == 'aarch64':
+        # if running this on an arm64 machine, use the arm64 docker image
+        if os.uname().machine == 'arm64':
             self.container_name = cfg('minio',
                                       'strongsort_container_arm64')
         else:
@@ -71,7 +70,6 @@ class DockerRunner:
         self.out_path = temp_path / str(job_id) / 'output'
         self.in_path.mkdir(parents=True, exist_ok=True)
         self.out_path.mkdir(parents=True, exist_ok=True)
-
 
     def __del__(self):
         """
@@ -188,7 +186,7 @@ class DockerRunner:
     def is_successful(self):
         """
         Check if the container has successfully completed
-        :return: True if the container is complete, False otherwise
+        :return: True if a .tar.gz was created, False otherwise
         """
 
         # Complete if the output directory has a tar.gz file in it
