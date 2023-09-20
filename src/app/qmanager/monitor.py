@@ -11,7 +11,7 @@ from urllib.parse import urlparse
 import docker
 from deepsea_ai.config.config import Config
 from deepsea_ai.database.job import JobType, PydanticJobWithMedias, Status
-from deepsea_ai.database.job.database_helper import get_status, update_media
+from deepsea_ai.database.job.database_helper import get_status, update_media, json_b64_decode, json_b64_encode
 from sqlalchemy.orm import sessionmaker
 
 from app.conf import local_config_ini_path
@@ -74,7 +74,7 @@ class Monitor:
                 job_data = PydanticJobWithMedia2.from_orm(job)
                 update_media(db, job, job.media[0].name, Status.RUNNING)
 
-        if job_data:
+        if job_data and len(all_containers) == 0:
             # Make a prefix for the output based on the video path (sans http) and the current time
             video_s3 = Path(urlparse(job_data.media[0].name).path)
             key = f"{video_s3.parent}{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}"
@@ -83,7 +83,7 @@ class Monitor:
             instance = DockerRunner(job_id=job_data.id,
                                     output_s3=output_s3,
                                     video_url=job_data.media[0].name,
-                                    model_s3=job_data.engine,
+                                    model_s3=job_data.model,
                                     track_s3=self.s3_strongsort_track_config,
                                     args='--iou-thres 0.5 --conf-thres 0.01 --agnostic-nms --max-det 100')
 
@@ -101,12 +101,16 @@ class Monitor:
                 time.sleep(30)
                 num_tries += 1
 
+            # Update the job status
             with self.session_maker.begin() as db:
                 job = db.query(Job2).filter(Job2.id == job_data.id).first()
                 if instance.is_successful():
                     info(f'Processing complete: {instance.is_successful()}')
+                    # Add the location of the output
+                    metadata = json_b64_decode(job.media[0].metadata_b64)
+                    metadata['output'] = output_s3
+                    update_media(db, job, job.media[0].name, Status.SUCCESS, metadata_b64=json_b64_encode(metadata))
                     self.notify(job.email, Status.SUCCESS)
-                    update_media(db, job, job.media[0].name, Status.SUCCESS)
                 else:
                     err(f'Processing complete: {instance.is_successful()}')
                     update_media(db, job, job.media[0].name, Status.FAILED)
@@ -117,7 +121,8 @@ class Monitor:
         if len(jobs_ids_running) > 0:
             for job_id in jobs_ids_running:
                 # Should never get here unless something went wrong and the
-                # service was restarted while a job was running
+                # service was restarted while a job was running, so kill
+                # the container and mark the job as failed
                 err(f'Job {job_id} was running but the service was restarted')
                 with self.session_maker.begin() as db:
                     job = db.query(Job2).filter(Job2.id == job_id).first()
@@ -128,3 +133,10 @@ class Monitor:
                         container.stop()
                         container.remove()
                     self.notify(job, Status.FAILED)
+
+        if len(all_containers) > 0:
+            # Should never get here unless something went wrong
+            for container in all_containers:
+                err(f'Container {container.id} was running but the service was restarted. Stopping and removing it')
+                container.stop()
+                container.remove()

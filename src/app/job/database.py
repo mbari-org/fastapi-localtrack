@@ -4,18 +4,16 @@
 from datetime import datetime
 from typing import List
 
-from deepsea_ai.database.job import JobBase, MediaBase, Status, PydanticMedia, Media, Job
+from deepsea_ai.logger import info
+from deepsea_ai.database.job import MediaBase, Status, Media, Job
 from deepsea_ai.database.job.database_helper import json_b64_encode, json_b64_decode
 from pydantic_sqlalchemy import sqlalchemy_to_pydantic
 from sqlalchemy import Column, String, create_engine, Integer, ForeignKey
 from sqlalchemy.orm import relationship, sessionmaker, declarative_base, Session
-
-from deepsea_ai.config.config import Config
-from deepsea_ai.logger import info
-
 from pathlib import Path
 
 Base = declarative_base()
+
 
 class Job2(Job):
     __table_args__ = {'extend_existing': True}
@@ -23,18 +21,16 @@ class Job2(Job):
 
     email = Column(String, nullable=False)
 
-    # one-to-many relationship with the Media table
-    media = relationship("Media2", back_populates="job", cascade="all, delete-orphan")
+    model = Column(String, nullable=False)
+
+    media = relationship('Media2', backref="job", passive_deletes=True)
 
 
 class Media2(MediaBase):
     __table_args__ = {'extend_existing': True}
     __tablename__ = "media"
 
-    job_id = Column(Integer, ForeignKey("job.id", ondelete='CASCADE'))
-
-    # many-to-one relationship with the Job table
-    job = relationship("Job2", back_populates="media")
+    job_id = Column(Integer, ForeignKey('job.id', ondelete='CASCADE'))
 
 
 PydanticJob2 = sqlalchemy_to_pydantic(Job2)
@@ -61,13 +57,13 @@ def init_db(db_path: Path, reset: bool = False) -> sessionmaker:
     info(f"Initializing job cache database in {db_path} as {db}")
     engine = create_engine(f"sqlite:///{db.as_posix()}", connect_args={"check_same_thread": True}, echo=False)
 
-    Base.metadata.create_all(engine, tables=[Job2.__table__, Media.__table__])
+    Base.metadata.create_all(engine, tables=[Job2.__table__, Media2.__table__])
 
     if reset:
         # Clear the database
         with sessionmaker(bind=engine).begin() as db:
             db.query(Job2).delete()
-            db.query(Media).delete()
+            db.query(Media2).delete()
 
     return sessionmaker(bind=engine)
 

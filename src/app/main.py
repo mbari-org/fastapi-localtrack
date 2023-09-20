@@ -1,6 +1,6 @@
 # fastapi-accutrack, Apache-2.0 license
-# Filename: qmanager/monitor.py
-# Description: Runs a FastAPI server to serve video detection and tracking models
+# Filename: app/main.py
+# Description: Runs a FastAPI server to run video detection and tracking models locally
 
 import datetime
 import signal
@@ -11,14 +11,13 @@ import docker
 from pathlib import Path
 from urllib.parse import urlparse
 
-from deepsea_ai.database.job.database_helper import get_status
+from deepsea_ai.database.job.database_helper import get_status, json_b64_encode, json_b64_decode
 from deepsea_ai.database.job.misc import JobType, Status
 from fastapi import FastAPI, HTTPException, Request, status
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
 
 from pydantic import BaseModel
-from sqlalchemy.orm import sessionmaker
 
 from app.conf import cfg
 from app import __version__
@@ -26,7 +25,7 @@ from app.job import Job2, Media2, init_db
 from app.logger import info, debug
 from app.qmanager import Monitor
 from app.utils.exceptions import NotFoundException, InvalidException
-from app.utils.mailer import send_email, validate_email
+from app.utils.mailer import validate_email
 from app.utils.misc import check_video_availability, list_by_suffix
 
 s3_root_bucket = cfg('minio', 's3_root_bucket')
@@ -109,7 +108,8 @@ def get_job_status(**kwargs):
             job = db.query(Job2).filter(Job2.id == job_id).first()
         if job:
             job_status = get_status(job)
-            return {"status": job_status}
+            media = job.media[0]
+            return {"status": job_status, "video": media.name, "metadata": json_b64_decode(media.metadata_b64)}
         else:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Job {kwargs} not found")
 
@@ -121,7 +121,8 @@ async def root():
 
 @app.get("/health", status_code=status.HTTP_200_OK)
 async def root():
-    # Check if docker is available
+    # Check if docker is available on the host and models are available
+    # if not, return a 503 error
     client = docker.from_env()
     try:
         client.ping()
@@ -161,16 +162,16 @@ async def process_task(item: PredictModel):
 
     # Create a name for the job based on the video prefix, the model name and the timestamp
     video_name = video.split('=')[-1]
-    job_name = f"{model}-{Path(video_name).stem}-{datetime.datetime.utcnow()}"
+    job_name = f"{model} {Path(video_name).stem} {datetime.datetime.utcnow()}"
 
     # Add the job to the cache
     with session_maker.begin() as db:
         model_s3 = model_paths[model]
         if email:
-            job = Job2(email=email, name=job_name, engine=model_s3, job_type=JobType.DOCKER)
+            job = Job2(email=email, name=job_name, engine="", model=model_s3, job_type=JobType.DOCKER)
         else:
-            job = Job2(name=job_name, engine=model_s3, job_type=JobType.DOCKER)
-        media = Media2(name=video, status=Status.QUEUED, metadata_b64=metadata)
+            job = Job2(name=job_name, engine="", model=model_s3, job_type=JobType.DOCKER)
+        media = Media2(name=video, status=Status.QUEUED, metadata_b64=json_b64_encode(metadata), updatedAt=datetime.datetime.utcnow())
         job.media.append(media)
         db.add(job)
 
@@ -191,3 +192,11 @@ async def get_status_by_id(job_id: int):
 @app.get("/status_by_name/{job_name}")
 async def get_status_by_name(job_name: str):
     return get_job_status(job_name=job_name)
+
+
+@app.get("/status")
+async def get_status_all():
+    # Get status for all DOCKER jobs
+    with session_maker.begin() as db:
+        jobs = db.query(Job2).filter(Job2.job_type == JobType.DOCKER).all()
+        return {"jobs": [{"id": job.id, "name": job.name, "status": get_status(job)} for job in jobs]}
