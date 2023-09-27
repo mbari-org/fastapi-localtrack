@@ -6,6 +6,7 @@ from datetime import datetime
 
 import asyncio
 
+import yaml
 from aiodocker import Docker, DockerError
 import os
 import tarfile
@@ -98,7 +99,7 @@ class DockerRunner:
         if download_video(self.video_url, self.in_path):
             logger.info(f'Video {self.video_url} downloaded to {self.in_path}')
         else:
-            err(f'Failed to download {self.video_url} to {self.in_path.as_posix()}.'
+            logger.error(f'Failed to download {self.video_url} to {self.in_path.as_posix()}.'
                 f' Are you sure your nginx server is running?')
             return
 
@@ -191,7 +192,7 @@ class DockerRunner:
                 if e.status == 404:
                     await docker_aoi.pull(image_name)
                 else:
-                    err(f'Error retrieving {image_name} image.')
+                    logger.error(f'Error retrieving {image_name} image.')
                     raise DockerError(e.status, f'Error retrieving {image_name} image.')
 
             try:

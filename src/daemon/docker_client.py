@@ -2,7 +2,6 @@
 # Filename: daemon/docker_client.py
 # Description: Docker client that manages docker containers
 
-import logging
 import os
 from datetime import datetime
 from pathlib import Path
@@ -15,7 +14,7 @@ from deepsea_ai.database.job import Status, JobType
 from deepsea_ai.database.job.database_helper import json_b64_decode, json_b64_encode, get_status
 
 from app.job import MediaLocal, JobLocal, update_media, PydanticJobWithMedia2, init_db
-from app.logger import CustomLogger, info, err, warn
+from app.logger import info, err, warn
 from daemon.docker_runner import DockerRunner
 
 DEFAULT_CONTAINER_NAME = 'strongsort'
@@ -159,7 +158,7 @@ class DockerClient:
                 container.remove()
 
 
-async def notify(self, job: JobLocal, local_path: Path = None) -> None:
+async def notify(job: JobLocal, local_path: Path = None) -> None:
     """
     Notify a receiver through a multipart POST request
     :param job: The job to notify about
@@ -173,7 +172,7 @@ async def notify(self, job: JobLocal, local_path: Path = None) -> None:
 
     # Add any additional kwargs to the metadata
     metadata = json_b64_decode(job.metadata_b64)
-    # Add status and the job id to the metadata
+    # Add job id to the metadata
     metadata['job_id'] = job.id
 
     if local_path and local_path.exists():

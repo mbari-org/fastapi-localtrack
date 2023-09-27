@@ -17,7 +17,6 @@ from app import logger
 test_video_url = 'http://localhost:8090/video/V4361_20211006T162656Z_h265_10frame.mp4'
 test_video_url_missing = 'http://localhost:8090/video/V4361_20211006T162656Z_h265_1sec_missing.mp4'
 
-global session_maker
 global client
 
 DAEMON_AVAILABLE = True
@@ -99,8 +98,8 @@ def test_predict_sans_metadata(startup, shutdown):
     job_id = response.json()['job_id']
     info(f'Job is {job_id}')
 
-    # Wait for 40 seconds to allow the job to finish
-    time.sleep(40)
+    # Wait for 60 seconds to allow the job to finish
+    time.sleep(60)
 
     response = client.get(f"/status_by_id/{job_id}")
     info(f'Received status {response.json()} for job {job_id}')

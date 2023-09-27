@@ -2,7 +2,6 @@
 # Filename: tests/test_health.py
 # Description: Test health endpoint
 
-import time
 from pathlib import Path
 from conf import init_credentials, run_minio
 
@@ -15,6 +14,9 @@ from fastapi.testclient import TestClient
 import pytest
 import os
 import signal
+from app import logger
+
+logger = logger.create_logger_file(Path(__file__).parent, __file__)
 
 @pytest.fixture
 def shutdown():

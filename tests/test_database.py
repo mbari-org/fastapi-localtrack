@@ -1,8 +1,8 @@
 # fastapi-localtrack, Apache-2.0 license
 # Filename: tests/test_database.py
 # Description: Test the sqlite database with pydantic
+
 import time
-import base64
 from datetime import datetime
 from pathlib import Path
 import os
@@ -14,10 +14,14 @@ from tests.conf.setup import init_credentials, run_minio
 
 # Initialize the credentials - this is needed before importing the app to set the environment variables
 init_credentials()
-from deepsea_ai.database.job.database_helper import get_num_failed, get_num_completed, json_b64_decode, json_b64_encode, get_status
+from deepsea_ai.database.job.database_helper import get_num_failed, get_num_completed, json_b64_decode, json_b64_encode, \
+    get_status
 from deepsea_ai.database.job.misc import JobType, Status, job_hash
 from app.job import JobLocal, MediaLocal, PydanticJobWithMedia2, init_db, update_media
-from app.logger import CustomLogger
+
+from app import logger
+
+logger = logger.create_logger_file(Path(__file__).parent, __file__)
 
 global session_maker
 
@@ -25,6 +29,7 @@ fake_metadata = {
     "image_uri_ecr": "fake_image_uri_ecr",
     "instance_type": "fake_instance_type",
 }
+
 
 @pytest.fixture
 def startup():

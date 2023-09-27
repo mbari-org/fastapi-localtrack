@@ -4,21 +4,19 @@
 
 from pathlib import Path
 from fastapi.testclient import TestClient
-from app.job import init_db
 from tests.conf.setup import init_credentials, run_minio
 import pytest
 import os
 import signal
-import time
+
+from app import logger
+
+logger = logger.create_logger_file(Path(__file__).parent, __file__)
 
 
 @pytest.fixture
 def startup():
     global client
-    global session_maker
-
-    # Reset the database
-    session_maker = init_db(Path.cwd() / 'db', reset=True)
 
     # Initialize the credentials - this is needed before starting the app to set the environment variables
     init_credentials()
