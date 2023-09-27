@@ -24,5 +24,13 @@ jobs:
       - name: Wait for Docker container to start
         run: sleep 10
 
+      - name: Setup environment
+        run: |
+          export AWS_DEFAULT_PROFILE=minio-accutrack
+
+      - name: Run daemon module to handle processing test data
+        working-directory: src
+        run: python -m daemon
+
       - name: Run pytest
         run: pytest

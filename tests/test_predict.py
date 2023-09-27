@@ -1,49 +1,80 @@
+# fastapi-accutrack, Apache-2.0 license
+# Filename: tests/test_predict.py
+# Description: Tests for the predict endpoint
+
 import time
 from pathlib import Path
-
 import pytest
+import os
+import signal
 from fastapi.testclient import TestClient
 
-from app.job import init_db, Job2
-from app.logger import CustomLogger
-from app.main import app, session_maker
-from deepsea_ai.database.job.database_helper import get_num_failed, get_num_completed,  json_b64_encode, get_status
-
-# Get the path of this file
-path = Path(__file__)
-
-# Get the path of a test model
-image_path = path.parent / 'data' / 'model.pt'
+from app.logger import info
+from tests.conf.setup import init_credentials, run_minio
+from app import logger
 
 # Test video url hosted on localhost; Requires running the test/runserver.sh script first
-test_video_url = 'http://localhost:8090/V4361_20211006T162656Z_h265_1sec.mp4'
-test_video_url_missing = 'http://localhost:8090/V4361_20211006T162656Z_h265_1sec_missing.mp4'
-
-CustomLogger(output_path=Path.cwd() / 'logs', output_prefix=__name__)
-
-client = TestClient(app)
+test_video_url = 'http://localhost:8090/video/V4361_20211006T162656Z_h265_10frame.mp4'
+test_video_url_missing = 'http://localhost:8090/video/V4361_20211006T162656Z_h265_1sec_missing.mp4'
 
 global session_maker
+global client
+
+DAEMON_AVAILABLE = True
+logger = logger.create_logger_file(Path(__file__).parent / 'logs', __file__)
+
+fake_metadata = {
+    "image_uri_ecr": "fake_image_uri_ecr",
+    "instance_type": "fake_instance_type",
+}
 
 
 @pytest.fixture
-def setup_database():
-    global session_maker
-    # Reset the database
-    session_maker = init_db(Path.cwd() / 'db', reset=True)
+def startup():
+    global client
+
+    # Initialize the credentials - this is needed before starting the app to set the environment variables
+    init_credentials()
+
+    # Start test minio server
+    run_minio()
+
+    from app.main import app
+    client = TestClient(app)
+    yield
 
 
-def test_predict_invalid_url():
-    print('Test that the prediction for a bad or missing video url returns a 404 status code')
+@pytest.fixture
+def shutdown():
+    print('Shutting down the app')
+    os.kill(os.getpid(), signal.SIGINT)
+
+
+def get_example_model():
+    """
+    Get the first model from the models endpoint
+    :return: model name
+    """
+    # Get the first model from the models endpoint - there should only be one in test
+    response = client.get('/models')
+    assert response.status_code == 200
+    models = response.json()['model']
+    assert len(models) == 1
+    return models[0]
+
+
+def test_predict_invalid_url(startup, shutdown):
+    info('Test that the prediction for a bad or missing video url returns a 404 status code')
+    example_model = get_example_model()
     response = client.post('/predict', json={
-        'model': 'yolov5s',
+        'model': example_model,
         'video': test_video_url_missing,
     })
     assert response.status_code == 404
 
 
-def test_predict_invalid_model():
-    print('Test that the prediction for an invalid model returns a 404 status code')
+def test_predict_invalid_model(startup, shutdown):
+    info('Test that the prediction for an invalid model returns a 404 status code')
     response = client.post('/predict', json={
         'model': 'yolov5sfoobar',
         'video': test_video_url,
@@ -51,33 +82,106 @@ def test_predict_invalid_model():
     assert response.status_code == 404
 
 
-def test_predict(setup_database):
-    print('Test that the prediction for yolov5 returns a 200 status code')
-    data = {"model": "yolov5s"}
+@pytest.mark.skipif(not DAEMON_AVAILABLE, reason="This test is excluded because it requires a daemon process")
+def test_predict_sans_metadata(startup, shutdown):
+    info('Test that the prediction for yolov5 returns a 200 status code')
+    # Get the first model from the models endpoint
+    response = client.get('/models')
+    assert response.status_code == 200
+    models = response.json()['model']
+    example_model = models[0]
+
     response = client.post('/predict', json={
-        'model': 'yolov5s',
+        'model': example_model,
         'video': test_video_url
     })
     assert response.status_code == 200
     job_id = response.json()['job_id']
-    print(f'Job is {job_id}')
+    info(f'Job is {job_id}')
 
-    # Sleep for 3 seconds to allow the job to start
-    time.sleep(3)
+    # Wait for 40 seconds to allow the job to finish
+    time.sleep(40)
 
-    # Check every 5 seconds to see if the job is complete and timeout after 10 tries
-    num_tries = 0
-    while num_tries < 10:
-        print('Waiting for job to complete')
-        with session_maker.begin() as db:
-            # Get the job from the database by the job_id
-            job = db.query(Job2).filter(Job2.id == job_id).first()
-            status = get_status(job)
-            print(f'Job status: {status}')
-            if status == 'SUCCESS':
-                break
-        time.sleep(5)
+    response = client.get(f"/status_by_id/{job_id}")
+    info(f'Received status {response.json()} for job {job_id}')
 
-        num_tries += 1
-        assert num_tries < 3
-        assert status == 'SUCCESS'
+    assert response.status_code == 200
+    assert response.json()['status'] == 'SUCCESS'
+
+@pytest.mark.skipif(not DAEMON_AVAILABLE, reason="This test is excluded because it requires a daemon process")
+def test_predict_metadata(startup, shutdown):
+    info('Test that the prediction for yolov5 returns a 200 status code')
+    # Get the first model from the models endpoint
+    response = client.get('/models')
+    assert response.status_code == 200
+    models = response.json()['model']
+    example_model = models[0]
+
+    response = client.post('/predict', json={
+        'model': example_model,
+        'video': test_video_url,
+        'metadata': fake_metadata
+    })
+    assert response.status_code == 200
+    job_id = response.json()['job_id']
+    info(f'Job is {job_id}')
+
+    # Wait for 60 seconds to allow the job to finish
+    time.sleep(60)
+
+    response = client.get(f"/status_by_id/{job_id}")
+    info(f'Received status {response.json()} for job {job_id}')
+
+    assert response.status_code == 200
+    assert response.json()['status'] == 'SUCCESS'
+
+    # Verify that the metadata was passed through correctly
+    final_metadata = response.json()['metadata']
+    assert response.json()['metadata'] == final_metadata
+
+
+@pytest.mark.skipif(not DAEMON_AVAILABLE, reason="This test is excluded because it requires a daemon process")
+def test_predict_queued(startup, shutdown):
+    info('Test that the prediction reports A QUEUED status')
+    example_model = get_example_model()
+    response = client.post('/predict', json={
+        'model': example_model,
+        'video': test_video_url
+    })
+    info(f'Received response {response.json()}')
+    assert response.status_code == 200
+
+    job_id = response.json()['job_id']
+    info(f'Job is {job_id}')
+
+    response = client.get(f"/status_by_id/{job_id}")
+    info(f'Received status {response.json()} for job {job_id}')
+
+    assert response.status_code == 200
+    assert response.json()['status'] == 'QUEUED'
+
+
+@pytest.mark.skipif(not DAEMON_AVAILABLE, reason="This test is excluded because it requires a daemon process")
+def test_predict_running(startup, shutdown):
+    info('Test that the prediction reports A RUNNING status and metadata following submission')
+    example_model = get_example_model()
+
+    response = client.post('/predict', json={
+        'model': example_model,
+        'video': test_video_url,
+        'metadata': fake_metadata
+    })
+    info(f'Received response {response.json()}')
+    assert response.status_code == 200
+
+    job_id = response.json()['job_id']
+    info(f'Job is {job_id}')
+
+    # Wait for 10 seconds to allow the job to start
+    time.sleep(10)
+
+    response = client.get(f"/status_by_id/{job_id}")
+    info(f'Received status {response.json()} for job {job_id}')
+
+    assert response.status_code == 200
+    assert response.json()['status'] == 'RUNNING'

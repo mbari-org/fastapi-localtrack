@@ -1,9 +1,0 @@
-boto3
-docker==2.0.0
-requests
-pytest
-pandas
-fastapi[all]
-httpx
-awscli_plugin_endpoint
-deepsea_ai==1.22.0

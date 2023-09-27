@@ -38,9 +38,13 @@ echo "Download example data and save to the m3-video-processing bucket"
 temp=$(date +%s)
 mkdir -p ${temp}/models/track-config
 aws s3 cp --no-sign-request s3://902005-public/models/Megadetector/best.pt ${temp}/models/Megadetector.pt
-aws s3 cp --no-sign-request s3://902005-public/models/track-config/strong_sort_benthic.yaml ${temp}/track-config/strong_sort_benthic.yaml
+aws s3 cp --no-sign-request s3://902005-public/models/track-config/strong_sort_benthic.yaml ${temp}/models/track-config/strong_sort_benthic.yaml
 aws s3 cp --no-sign-request s3://902005-public/models/yolov5x_mbay_benthic_model.tar.gz ${temp}/models/yolov5x_mbay_benthic_model.tar.gz
 aws s3 sync ${temp} --profile ${PROFILE} s3://${ROOT_BUCKET}
 
 # Clean up
 rm -rf ${temp}
+
+# Start the minio server
+docker-compose up -d
+echo "Minio server running at ${ENDPOINT_URL}"

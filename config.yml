@@ -1,0 +1,30 @@
+log:
+  level: "INFO"
+  format: "[%(asctime)s] [%(levelname)s] [%(name)s]: %(message)s"
+
+database:
+  path: "/Users/dcline/Dropbox/code/fastapi-accutrack/data/db/"
+
+monitors:
+  example:
+    method: "GET"
+    url: "http://localhost:8090"
+    timeout: 300
+    check_every: 3000
+  docker:
+    check_every: 5
+
+minio:
+  strongsort_track_config: s3://m3-video-processing/track-config/strong_sort_benthic.yaml
+  strongsort_container_arm64: mbari/strongsort-yolov5:arm64-d83ee6a
+  strongsort_container: mbari/strongsort-yolov5:d83ee6a
+  root_bucket: m3-video-processing
+  model_prefix: models
+  track_prefix: tracks
+  video_prefix: video
+  track_config_prefix: track-config
+
+aws_public:
+  model: s3://902005-public/models/yolov5x_mbay_benthic_model.tar.gz
+  track_config: s3://902005-public/models/track-config/strong_sort_benthic.yaml
+  video_example: s3://902005-public/video/10frame/V4361_20211006T162656Z_h265_10frame.mp4

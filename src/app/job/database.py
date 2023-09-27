@@ -4,9 +4,8 @@
 from datetime import datetime
 from typing import List
 
-from deepsea_ai.logger import info
+from app.logger import info
 from deepsea_ai.database.job import MediaBase, Status, Media, Job
-from deepsea_ai.database.job.database_helper import json_b64_encode, json_b64_decode
 from pydantic_sqlalchemy import sqlalchemy_to_pydantic
 from sqlalchemy import Column, String, create_engine, Integer, ForeignKey
 from sqlalchemy.orm import relationship, sessionmaker, declarative_base, Session
@@ -15,28 +14,28 @@ from pathlib import Path
 Base = declarative_base()
 
 
-class Job2(Job):
+class JobLocal(Job):
     __table_args__ = {'extend_existing': True}
     __tablename__ = "job"
 
-    args = Column(String, nullable=False)
+    args = Column(String, nullable=True)
 
-    email = Column(String, nullable=False)
+    metadata_b64 = Column(String, nullable=True)
 
     model = Column(String, nullable=False)
 
-    media = relationship('Media2', backref="job", passive_deletes=True)
+    media = relationship('MediaLocal', backref="job", passive_deletes=True)
 
 
-class Media2(MediaBase):
+class MediaLocal(MediaBase):
     __table_args__ = {'extend_existing': True}
     __tablename__ = "media"
 
     job_id = Column(Integer, ForeignKey('job.id', ondelete='CASCADE'))
 
 
-PydanticJob2 = sqlalchemy_to_pydantic(Job2)
-PydanticMedia2 = sqlalchemy_to_pydantic(Media2)
+PydanticJob2 = sqlalchemy_to_pydantic(JobLocal)
+PydanticMedia2 = sqlalchemy_to_pydantic(MediaLocal)
 
 
 class PydanticJobWithMedia2(PydanticJob2):
@@ -59,45 +58,29 @@ def init_db(db_path: Path, reset: bool = False) -> sessionmaker:
     info(f"Initializing job cache database in {db_path} as {db}")
     engine = create_engine(f"sqlite:///{db.as_posix()}", connect_args={"check_same_thread": True}, echo=False)
 
-    Base.metadata.create_all(engine, tables=[Job2.__table__, Media2.__table__])
+    Base.metadata.create_all(engine, tables=[JobLocal.__table__, MediaLocal.__table__])
 
     if reset:
         # Clear the database
         with sessionmaker(bind=engine).begin() as db:
-            db.query(Job2).delete()
-            db.query(Media2).delete()
+            db.query(JobLocal).delete()
+            db.query(MediaLocal).delete()
 
     return sessionmaker(bind=engine)
 
 
-def update_media(db: Session, job: Job, video_name: str, status: str, **kwargs):
+def update_media(db: Session, job: Job, video_name: str, status: str, metadata_b64: str = None):
     """
     Update a video in a job. If the video does not exist, add it to the job.
     :param db: The database session
     :param job: The job
     :param video_name: The name of the video to update
     :param status: The status of the video
+    :param metadata_b64: The metadata to pass to the job
     """
     info(f'Updating media {video_name} to {status}')
 
-    # Set kwargs to empty dict if None
-    kwargs = kwargs or {}
-
-    # If there are additional kwargs, search by them and the name
-    media = None
-    if kwargs:
-        if 'metadata_b64' in kwargs:
-            # Find the media with the matching metadata
-            media = [m for m in job.media if m.metadata_b64 == kwargs['metadata_b64'] and m.name == video_name]
-        else:
-            for key, value in kwargs.items():
-                for m in job.media:
-                    if m.metadata_b64 and json_b64_decode(m.metadata_b64)[key] == value and m.name == video_name:
-                        info(f'Found media matching {video_name} and {key} {value} in job {job.name}')
-                        media = m
-                        break
-    if not media:  # can't find by metadata, try by name
-        media = [m for m in job.media if m.name == video_name]
+    media = [m for m in job.media if m.name == video_name]
 
     if media:
         if len(media) > 0:
@@ -105,35 +88,19 @@ def update_media(db: Session, job: Job, video_name: str, status: str, **kwargs):
 
         info(f'Found media {video_name} in job {job.name}')
 
-        if status == Status.QUEUED and media.status == Status.RUNNING or media.status == Status.SUCCESS or media.status == Status.FAILED:
-            info(f'Media {video_name} in job {job.name} is already {media.status}. Not updating to {status}')
-            return
-
         # Update the media status, timestamp and any additional kwargs
         media.status = status
         media.updatedAt = datetime.utcnow()
-
-        # add metadata if there was one in the kwargs
-        if 'metadata_b64' in kwargs:
-            media.metadata_b64 = kwargs['metadata_b64']
-        else:
-            media.metadata_b64 = json_b64_encode(kwargs)
-
-        # Update the metadata
-        metadata_json = json_b64_decode(media.metadata_b64)
-        for key, value in kwargs.items():
-            if key in metadata_json:
-                metadata_json[key] = value
-        media.metadata_b64 = json_b64_encode(metadata_json)
-
+        if metadata_b64:
+            media.metadata_b64 = metadata_b64
         db.merge(media)
 
     else:
-        info(f'A new media {video_name} was added to job {job.name} kwargs {kwargs}')
+        info(f'A new media {video_name} was added to job {job.name}')
         new_media = Media(name=video_name,
                           status=status,
                           job=job,
-                          metadata_b64=json_b64_encode(kwargs),
+                          metadata_b64=metadata_b64,
                           updatedAt=datetime.utcnow())
         db.add(new_media)
         job.media.append(new_media)

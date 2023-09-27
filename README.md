@@ -11,6 +11,13 @@
 - [Docker Compose](https://docs.docker.com/compose/install/)
 - [AWS CLI](https://docs.aws.amazon.com/cli/latest/userguide/cli-chap-install.html) for downloading test data
 
+# TODO
+
+- [ ] Update documentation to reflact additional endpoints and return of job_id in metadata
+- [ ] Wire in daemon to github actions
+- [ ] Add model discovery
+- [ ] Add REID weights
+
 # Deploy locally
 
 ## Clone the repository
@@ -18,6 +25,7 @@
 git clone http://github.com/mbari-org/fastapi-accutrack
 cd fastapi-accutrack
 ```
+
 
 ## Configure minio
 

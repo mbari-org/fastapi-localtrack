@@ -54,42 +54,9 @@ def list_by_suffix(bucket: str, prefix: str, suffixes: list[str]) -> list[str]:
             info(f'Bucket {bucket} is empty')
     except Exception as e:
         exception(f'Error listing objects: {e}')
+        raise e
 
     return objects
-
-
-def upload_files_to_s3(bucket: str, local_path: str, s3_path: str, suffixes: list[str] = None) -> None:
-    """
-    Upload all the files in the local path with the given suffixes to the s3 path
-    :param bucket: the bucket to upload to
-    :param local_path: the local path to upload from
-    :param s3_path: the s3 path to upload to
-    :param suffixes: the suffixes to upload, e.g. ['tar.gz', 'pt']
-    :return: None
-    """
-
-    info(f'Uploading files from {local_path} to s3://{bucket}/{s3_path}')
-
-    if 'AWS_DEFAULT_PROFILE' in os.environ:
-        session = boto3.Session(profile_name=os.environ['AWS_DEFAULT_PROFILE'])
-        s3 = session.client('s3')
-    else:
-        s3 = boto3.client('s3')
-
-    if suffixes is None:
-        suffixes = ['tar.gz', 'json']
-
-    try:
-        for obj in pathlib.Path(local_path).iterdir():
-            if obj.is_file():
-                for s in suffixes:
-                    if obj.suffix == s:
-                        debug(f'Uploading {obj.as_posix()} to s3://{bucket}/{s3_path}')
-                        # Remove any double slashes from the s3 path
-                        s3_path = s3_path.replace('//', '/')
-                        s3.upload_file(obj.as_posix(), bucket, f'{s3_path}/{obj.name}')
-    except Exception as e:
-        exception(f'Error uploading files: {e}')
 
 
 def check_video_availability(video_url):
@@ -111,35 +78,8 @@ def check_video_availability(video_url):
         return False
 
 
-def download_video(url: str, save_path: pathlib.Path) -> bool:
-    """
-    Download a video from a url to a local path
-    :param url:  url to download from
-    :param save_path:  local path to save to
-    :return: True if successful, False otherwise
-    """
-    response = requests.get(url, stream=True)
-    if response.status_code == 200:
-        # If the save_path is a directory, use the filename from the url
-        if save_path.is_dir():
-            save_path = save_path / pathlib.Path(url).name
-
-        with save_path.open('wb') as file:
-            for chunk in response.iter_content(chunk_size=8192):
-                file.write(chunk)
-        info(f"Video {url} downloaded successfully to {save_path}.")
-        return True
-    else:
-        err(f"Failed to download {url} to {save_path}")
-        return False
-
-
 if __name__ == '__main__':
     # Get the path to the current file
     temp_path = pathlib.Path(__file__).resolve().parent / 'tmp'
     logger.create_logger_file(temp_path, 'misc')
     check_video_availability('http://localhost:8090/video/V4361_20211006T162656Z_h265_1sec.mp4')
-    download_video('http://localhost:8090/video/V4361_20211006T162656Z_h265_1sec.mp4',
-                   temp_path / 'V4361_20211006T162656Z_h265_1sec-test.mp4')
-    download_video('http://localhost:8090/video/V4361_20211006T162656Z_h265_1sec.mp4',
-                   temp_path)

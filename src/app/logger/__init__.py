@@ -7,8 +7,7 @@ __maintainer__ = "Danelle Cline"
 __email__ = "dcline at mbari.org"
 __doc__ = '''
 
-Logger for fastapi-accutrack. Logs to both a file and the console.
-Creates a global data frame to store a summary of the results.
+Logger for fastapi-accutrack. Logs to both a file and the console
 
 @author: __author__
 @status: __status__
@@ -19,11 +18,8 @@ import logging
 from pathlib import Path
 from datetime import datetime as dt
 
-import pandas as pd
-
 LOGGER_NAME = "MICROTRACK"
 DEBUG = True
-keys = ["job", "video", "time", "status", "message"]
 
 
 class _Singleton(type):
@@ -40,45 +36,39 @@ class Singleton(_Singleton('SingletonMeta', (object,), {})): pass
 
 
 class CustomLogger(Singleton):
-    logger = None
-    summary_df = None
-    output_path = Path.cwd()
+    _logger = None
+    _output_path = Path.cwd()
 
     def __init__(self, output_path: Path = Path.cwd(), output_prefix: str = "fastapi_accutrack"):
         """
         Initialize the logger
         """
-        global keys
-        # create a global data frame to store a summary of the results and constrain the header to
-        # the dictionary keys
-        self.keys = keys
-        self.summary_df = pd.DataFrame(columns=self.keys)
-        self.logger = logging.getLogger(LOGGER_NAME)
-        self.logger.setLevel(logging.DEBUG)
-        self.output_path = output_path
+        self._logger = logging.getLogger(LOGGER_NAME)
+        self._logger.setLevel(logging.DEBUG)
+        self._output_path = output_path
         output_path.mkdir(parents=True, exist_ok=True)
-        formatter = logging.Formatter("%(asctime)s %(levelname)s %(message)s")
+        formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] [%(name)s]: %(message)s")
 
         # default log file date to today
         now = dt.utcnow()
 
         # log to file
-        self.log_filename = output_path / f"{output_prefix}_{now:%Y%m%d}.log"
-        handler = logging.FileHandler(self.log_filename, mode="w")
+        log_filename = output_path / f"{output_prefix}_{now:%Y%m%d}.log"
+        handler = logging.FileHandler(log_filename, mode="w")
         handler.setFormatter(formatter)
         handler.setLevel(logging.INFO)
-        self.logger.addHandler(handler)
+        self._logger.addHandler(handler)
 
         # also log to console
         console = logging.StreamHandler()
         console.setLevel(logging.DEBUG)
         console.setFormatter(formatter)
-        self.logger.addHandler(console)
+        self._logger.addHandler(console)
 
-        self.logger.info(f"Logging to {self.log_filename}")
+        self._logger.info(f"Logging to {log_filename}")
 
     def loggers(self) -> logging.Logger:
-        return self.logger
+        return self._logger
 
 
 def create_logger_file(log_path: Path, prefix: str = "fastapi_accutrack"):
