@@ -13,7 +13,7 @@
 
 # TODO
 
-- [ ] Update documentation to reflact additional endpoints and return of job_id in metadata
+- [ ] Update documentation to reflect additional endpoints and return of job_id in metadata
 - [ ] Wire in daemon to github actions
 - [ ] Add model discovery
 - [ ] Add REID weights
