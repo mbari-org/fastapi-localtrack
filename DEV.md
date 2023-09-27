@@ -15,7 +15,7 @@ can service video with test video. This can be done with the following:
 ```shell
 conda activate fastapi-microtrack
 export PYTHONPATH=$PWD/src
-export AWS_DEFAULT_PROFILE=minio-accutrack
+export AWS_DEFAULT_PROFILE=minio-localtrack
 cd src/app && uvicorn main:app --reload
 ```
  

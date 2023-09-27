@@ -1,18 +1,6 @@
-# !/usr/bin/env python
-__author__ = "Danelle Cline"
-__copyright__ = "Copyright 2023, MBARI"
-__credits__ = ["MBARI"]
-__license__ = "GPL"
-__maintainer__ = "Danelle Cline"
-__email__ = "dcline at mbari.org"
-__doc__ = '''
-
-Miscellaneous utility functions
-
-@author: __author__
-@status: __status__
-@license: __license__
-'''
+## fastapi-localtrack, Apache-2.0 license
+# Filename: app/conf/init.py
+# Description: Miscellaneous utility functions
 
 import os
 

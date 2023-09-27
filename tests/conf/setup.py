@@ -17,7 +17,7 @@ test_video_url_10frame = 'http://localhost:8090/video/V4361_20211006T162656Z_h26
 test_video_url_missing = 'http://localhost:8090/video/V4361_20211006T162656Z_h265_1sec_missing.mp4'
 
 password = 'ReplaceMePassword'
-user = 'accutrack'
+user = 'localtrack'
 
 
 def init_credentials():

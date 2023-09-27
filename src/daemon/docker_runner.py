@@ -1,8 +1,7 @@
-# fastapi-accutrack, Apache-2.0 license
+# fastapi-localtrack, Apache-2.0 license
 # Filename: daemon/docker_runner.py
 # Description: Docker runner to process videos locally
 
-import pathlib
 from datetime import datetime
 
 import asyncio
@@ -207,7 +206,7 @@ class DockerRunner:
                                       f"{out_path}:/opt/ml/processing/output:rw"],
                         },
                         'Env': [
-                            f"AWS_DEFAULT_PROFILE={os.environ.get('AWS_DEFAULT_PROFILE', 'minio-accutrack')}",
+                            f"AWS_DEFAULT_PROFILE={os.environ.get('AWS_DEFAULT_PROFILE', 'minio-localtrack')}",
                         ],
                         'Cmd': command,
                         'AttachStdin': True,
@@ -264,7 +263,7 @@ async def main():
 
 
 if __name__ == '__main__':
-    os.environ['AWS_DEFAULT_PROFILE'] = 'minio-accutrack'
+    os.environ['AWS_DEFAULT_PROFILE'] = 'minio-localtrack'
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
     loop.close()

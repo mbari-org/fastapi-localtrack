@@ -1,24 +1,12 @@
-# !/usr/bin/env python
-__author__ = "Danelle Cline"
-__copyright__ = "Copyright 2023, MBARI"
-__credits__ = ["MBARI"]
-__license__ = "GPL"
-__maintainer__ = "Danelle Cline"
-__email__ = "dcline at mbari.org"
-__doc__ = '''
-
-Logger for fastapi-accutrack. Logs to both a file and the console
-
-@author: __author__
-@status: __status__
-@license: __license__
-'''
+# fastapi-localtrack, Apache-2.0 license
+# Filename: app/conf/init.py
+# Description:  Logger for fastapi-localtrack. Logs to both a file and the console
 
 import logging
 from pathlib import Path
 from datetime import datetime as dt
 
-LOGGER_NAME = "MICROTRACK"
+LOGGER_NAME = "LOCALTRACK"
 DEBUG = True
 
 
@@ -39,7 +27,7 @@ class CustomLogger(Singleton):
     _logger = None
     _output_path = Path.cwd()
 
-    def __init__(self, output_path: Path = Path.cwd(), output_prefix: str = "fastapi_accutrack"):
+    def __init__(self, output_path: Path = Path.cwd(), output_prefix: str = "localtrack"):
         """
         Initialize the logger
         """
@@ -71,7 +59,7 @@ class CustomLogger(Singleton):
         return self._logger
 
 
-def create_logger_file(log_path: Path, prefix: str = "fastapi_accutrack"):
+def create_logger_file(log_path: Path, prefix: str = "localtrack"):
     """
     Create a logger file
     :param log_path: Path to the log file

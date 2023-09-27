@@ -26,7 +26,7 @@ jobs:
 
       - name: Setup environment
         run: |
-          export AWS_DEFAULT_PROFILE=minio-accutrack
+          export AWS_DEFAULT_PROFILE=minio-localtrack
 
       - name: Run daemon module to handle processing test data
         working-directory: src

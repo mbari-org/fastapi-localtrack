@@ -3,7 +3,7 @@ log:
   format: "[%(asctime)s] [%(levelname)s] [%(name)s]: %(message)s"
 
 database:
-  path: "/Users/dcline/Dropbox/code/fastapi-accutrack/data/db/"
+  path: "/Users/dcline/Dropbox/code/fastapi-localtrack/data/db/"
 
 monitors:
   example:

@@ -3,7 +3,7 @@
 ![license-GPL](https://img.shields.io/badge/license-GPL-blue)
 [![Python](https://img.shields.io/badge/language-Python-blue.svg)](https://www.python.org/downloads/)
 
-**fastapi-accutrack** code is a lightweight API to process video. It uses the Python web framework [FastAPI](https://fastapi.tiangolo.com/).
+**fastapi-localtrack** code is a lightweight API to process video. It uses the Python web framework [FastAPI](https://fastapi.tiangolo.com/).
  
 # Requirements
 
@@ -22,8 +22,8 @@
 
 ## Clone the repository
 ```shell
-git clone http://github.com/mbari-org/fastapi-accutrack
-cd fastapi-accutrack
+git clone http://github.com/mbari-org/fastapi-localtrack
+cd fastapi-localtrack
 ```
 
 
@@ -33,12 +33,12 @@ cd fastapi-accutrack
  
 ```shell
 pip install awscli awscli-plugin-endpoint
-aws configure --profile minio-accutrack
+aws configure --profile minio-localtrack
 
 ```
 
 The default credentials are:
-- AWS Access Key ID [None]: **accutrack** 
+- AWS Access Key ID [None]: **localtrack** 
 - AWS Secret Access Key [None]: **ReplaceMePassword**.
 
 The credentials can be changed in the docker-compose file, or by setting up a .env file **in the same directory**

@@ -1,4 +1,4 @@
-# fastapi-accutrack, Apache-2.0 license
+# fastapi-localtrack, Apache-2.0 license
 # Filename: app/main.py
 # Description: Runs a FastAPI server to run video detection and tracking models locally
 
@@ -31,8 +31,8 @@ app = FastAPI()
 shutdown_flag = False
 
 # Create a logger if one doesn't exist in the temp directory
-# if not logger.custom_logger():
-#     logger = logger.create_logger_file(temp_path / 'logs')
+if not logger.custom_logger():
+    logger = logger.create_logger_file(temp_path / 'logs')
 
 # Reset the database
 info(f'Initializing the database')
@@ -140,7 +140,7 @@ def get_job_detail(**kwargs):
 
 @app.get("/")
 async def root():
-    return {"message": f'fastapi-accutrack {__version__}'}
+    return {"message": f'fastapi-localtrack {__version__}'}
 
 
 @app.get("/health", status_code=status.HTTP_200_OK)

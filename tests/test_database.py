@@ -1,4 +1,4 @@
-# fastapi-accutrack, Apache-2.0 license
+# fastapi-localtrack, Apache-2.0 license
 # Filename: tests/test_database.py
 # Description: Test the sqlite database with pydantic
 import time

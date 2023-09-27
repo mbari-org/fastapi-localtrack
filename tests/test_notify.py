@@ -1,4 +1,4 @@
-# fastapi-accutrack, Apache-2.0 license
+# fastapi-localtrack, Apache-2.0 license
 # Filename: tests/test_notify.py
 # Description: Test fake notify endpoint
 import json

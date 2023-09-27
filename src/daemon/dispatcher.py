@@ -1,4 +1,4 @@
-# fastapi-accutrack, Apache-2.0 license
+# fastapi-localtrack, Apache-2.0 license
 # Filename: daemon/dispatcher.py
 # Description: Dispatcher to run jobs
 

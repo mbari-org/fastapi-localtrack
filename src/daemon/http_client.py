@@ -1,4 +1,4 @@
-# fastapi-accutrack, Apache-2.0 license
+# fastapi-localtrack, Apache-2.0 license
 # Filename: daemon/docker_runner.py
 # Description: Checks for new models and uploads them to S3
 

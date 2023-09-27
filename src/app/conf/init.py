@@ -1,4 +1,4 @@
-# fastapi-accutrack, Apache-2.0 license
+# fastapi-localtrack, Apache-2.0 license
 # Filename: app/conf/init.py
 # Description:  Configuration for the application. This needs to be imported first in order to set up the logger and other configuration.
 

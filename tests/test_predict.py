@@ -1,4 +1,4 @@
-# fastapi-accutrack, Apache-2.0 license
+# fastapi-localtrack, Apache-2.0 license
 # Filename: tests/test_predict.py
 # Description: Tests for the predict endpoint
 
@@ -160,6 +160,9 @@ def test_predict_queued(startup, shutdown):
     assert response.status_code == 200
     assert response.json()['status'] == 'QUEUED'
 
+    # Wait for 50 seconds to allow the job to finish
+    time.sleep(50)
+
 
 @pytest.mark.skipif(not DAEMON_AVAILABLE, reason="This test is excluded because it requires a daemon process")
 def test_predict_running(startup, shutdown):
@@ -185,3 +188,6 @@ def test_predict_running(startup, shutdown):
 
     assert response.status_code == 200
     assert response.json()['status'] == 'RUNNING'
+
+    # Wait for 50 seconds to allow the job to finish
+    time.sleep(50)

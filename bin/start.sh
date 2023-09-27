@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Start the minio server and download example data
 # Requires awscli and minio client
-# Assumes awscli profile is configured as minio-accutrack per the README instructions
+# Assumes awscli profile is configured as minio-localtrack per the README instructions
 # Run with ./start.sh
 
 # Get the directory of this script
@@ -9,12 +9,12 @@ ROOT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && cd .. && p
 
 # Setup environment variables
 ROOT_BUCKET=m3-video-processing
-PROFILE=minio-accutrack
+PROFILE=minio-localtrack
 ENDPOINT_URL=http://127.0.0.1:9000
 
 # Enable plugin endpoint, add endpoint url and set max bandwidth to 62MB/s
 aws configure set plugins.endpoint awscli_plugin_endpoint
-aws configure set --profile minio-accutrack endpoint_url ${ENDPOINT_URL}
+aws configure set --profile minio-localtrack endpoint_url ${ENDPOINT_URL}
 aws configure --profile ${PROFILE} set s3.max_bandwidth 62MB/s
 
 # Setup minio and wait 3 seconds for it to start
