@@ -12,31 +12,14 @@ import os
 import tarfile
 import shutil
 import json
-import logging
 
 from urllib.parse import urlparse
 from pathlib import Path
 from daemon.misc import download_video, upload_files_to_s3
 
+from .logger import info, debug, err
+
 default_name = 'strongsort'
-
-logger = logging.getLogger(__name__)
-# default log file date to today
-now = datetime.utcnow()
-
-# log to file
-formatter = logging.Formatter("[%(asctime)s] [%(levelname)s] [%(name)s]: %(message)s")
-log_filename = Path(__name__).parent / f"{__file__}_{now:%Y%m%d}.log"
-handler = logging.FileHandler(log_filename, mode="w")
-handler.setFormatter(formatter)
-handler.setLevel(logging.INFO)
-logger.addHandler(handler)
-
-# also log to console
-console = logging.StreamHandler()
-console.setLevel(logging.DEBUG)
-console.setFormatter(formatter)
-logger.addHandler(console)
 
 class DockerRunner:
 
@@ -76,15 +59,15 @@ class DockerRunner:
         Clean up the input/output directories
         :return:
         """
-        logger.debug(f'Deleting {self.__class__.__name__} instance')
+        debug(f'Deleting {self.__class__.__name__} instance')
 
         # Clean up the input directory
-        logger.debug(f'Removing {self.in_path.as_posix()}')
+        debug(f'Removing {self.in_path.as_posix()}')
         if self.in_path.exists():
             shutil.rmtree(self.in_path.as_posix())
 
         # Clean up the output directory
-        logger.debug(f'Removing {self.out_path.as_posix()}')
+        debug(f'Removing {self.out_path.as_posix()}')
         if self.out_path.exists():
             shutil.rmtree(self.out_path.as_posix())
 
@@ -93,19 +76,19 @@ class DockerRunner:
         Proces the video with a local docker runner. Results are uploaded to the output_s3 location
         :return:
         """
-        logger.info(f'Processing {self.video_url} with {self.model_s3} and {self.track_s3} to {self.output_s3}')
+        info(f'Processing {self.video_url} with {self.model_s3} and {self.track_s3} to {self.output_s3}')
 
         # Download the video at the self.video_url to the self.in_path
         if await asyncio.to_thread(download_video(self.video_url, self.in_path)):
-            logger.info(f'Video {self.video_url} downloaded to {self.in_path}')
+            info(f'Video {self.video_url} downloaded to {self.in_path}')
         else:
-            logger.error(f'Failed to download {self.video_url} to {self.in_path.as_posix()}.'
+            err(f'Failed to download {self.video_url} to {self.in_path.as_posix()}.'
                 f' Are you sure your nginx server is running?')
             return
 
         home = Path.home()
         profile = os.environ.get('AWS_DEFAULT_PROFILE', 'default')
-        logger.info(f'Using credentials file in {home}/.aws and profile {profile}')
+        info(f'Using credentials file in {home}/.aws and profile {profile}')
 
         # Setup the command to run to be AWS SageMaker compliant, /opt/ml/input, etc. These are the default,
         # but included here for clarity
@@ -118,7 +101,7 @@ class DockerRunner:
         if self.args:
             command += ["--args", f"{self.args}"]
 
-        logger.info(f'Using command {command}')
+        info(f'Using command {command}')
 
         # Run the docker container asynchronously and wait for it to finish
         start_utc = datetime.utcnow()
@@ -192,7 +175,7 @@ class DockerRunner:
                 if e.status == 404:
                     await docker_aoi.pull(image_name)
                 else:
-                    logger.error(f'Error retrieving {image_name} image.')
+                    err(f'Error retrieving {image_name} image.')
                     raise DockerError(e.status, f'Error retrieving {image_name} image.')
 
             try:
@@ -220,14 +203,14 @@ class DockerRunner:
                     },
                     name=default_name,
                 )
-                logger.info(f'Running docker container {container.id} {default_name} with command {command}')
-                logger.info(f'Waiting for container {container.id} to finish')
+                info(f'Running docker container {container.id} {default_name} with command {command}')
+                info(f'Waiting for container {container.id} to finish')
 
                 await container.start()
                 await container.wait()
 
                 logs = await container.log(stdout=True, stderr=True)
-                logger.debug('\n'.join(logs))
+                debug('\n'.join(logs))
 
                 await container.delete(force=True)
             except Exception as e:
@@ -235,13 +218,10 @@ class DockerRunner:
 
 
 async def main():
-    yaml_path = os.getenv('YAML_PATH')
-    if not yaml_path:
-        default_path = Path(os.path.dirname(__file__)).parent.parent / 'config.yml'
-        print(f"YAML_PATH environment variable not set. Using {default_path}")
-        yaml_path = default_path
-        if not yaml_path.exists():
-            raise FileNotFoundError(f"Could not find {yaml_path}")
+    yaml_path = Path(os.path.dirname(__file__)).parent.parent / 'config.yml'
+    print(f"YAML_PATH environment variable not set. Using {yaml_path}")
+    if not yaml_path.exists():
+        raise FileNotFoundError(f"Could not find {yaml_path}")
 
     with open(yaml_path, 'r') as f:
         config = yaml.safe_load(f)
@@ -258,9 +238,9 @@ async def main():
         await p.run()
 
         if p.is_successful():
-            logger.info(f'Processing complete: {p.is_successful()}')
+            info(f'Processing complete: {p.is_successful()}')
         else:
-            logger.error(f'Processing complete: {p.is_successful()}')
+            err(f'Processing complete: {p.is_successful()}')
 
 
 if __name__ == '__main__':

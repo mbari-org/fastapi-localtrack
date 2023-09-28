@@ -10,10 +10,6 @@ import signal
 
 import pytest
 from sqlalchemy.orm import Session
-from tests.conf.setup import init_credentials, run_minio
-
-# Initialize the credentials - this is needed before importing the app to set the environment variables
-init_credentials()
 from deepsea_ai.database.job.database_helper import get_num_failed, get_num_completed, json_b64_decode, json_b64_encode, \
     get_status
 from deepsea_ai.database.job.misc import JobType, Status, job_hash
@@ -33,7 +29,6 @@ fake_metadata = {
 
 @pytest.fixture
 def startup():
-    run_minio()
     global session_maker
     # Reset the database
     session_maker = init_db(Path.cwd() / 'db', reset=True)

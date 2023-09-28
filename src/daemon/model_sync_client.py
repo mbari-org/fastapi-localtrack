@@ -2,10 +2,11 @@
 # Filename: daemon/model_sync_client.py
 # Description: Checks for new models and uploads them to S3
 
+import asyncio
 from pathlib import Path
 
-from app.logger import err
 from daemon.misc import upload_files_to_s3
+from daemon.logger import exception
 
 
 class ModelSyncClient:
@@ -15,5 +16,6 @@ class ModelSyncClient:
             num_uploaded = await upload_files_to_s3(root_bucket, model_path, model_prefix, ['.pt', '.gz'])
             return True, num_uploaded
         except Exception as e:
-            err(f'Error uploading models: {e}')
+            exception(f'Error uploading models: {e}')
+            asyncio.get_event_loop().stop()
             return False, 0

@@ -3,27 +3,28 @@ log:
   format: "[%(asctime)s] [%(levelname)s] [%(name)s]: %(message)s"
 
 database:
-  path: "/tmp/db"
+  path: "./sqlite_data"
+
+defaults:
+  args: --conf-thres=0.01 --iou-thres=0.4 --max-det=100 --agnostic-nms --imgsz 640 --reid-url=https://902005-public.s3.us-west-2.amazonaws.com/training/reid/benthic2017/osnet_ain_x0_75.pth.tar
+  video_url: http://localhost:8090/video/V4361_20211006T162656Z_h265_10frame.mp4
 
 monitors:
   models:
-    path: "/tmp/models"
+    path: "./models"
     check_every: 60
 
   docker:
-    check_every: 500
+    check_every: 15
+    strongsort_container_arm64: mbari/strongsort-yolov5:arm64-d83ee6a
+    strongsort_container: mbari/strongsort-yolov5:d83ee6a
 
 minio:
-  strongsort_track_config: s3://m3-video-processing/track-config/strong_sort_benthic.yaml
-  strongsort_container_arm64: mbari/strongsort-yolov5:arm64-d83ee6a
-  strongsort_container: mbari/strongsort-yolov5:d83ee6a
-  root_bucket: m3-video-processing
+  endpoint: "localhost:9000"
+  root_bucket: localtrack
   model_prefix: models
   track_prefix: tracks
   video_prefix: video
-  track_config_prefix: track-config
 
 aws_public:
   model: s3://902005-public/models/yolov5x_mbay_benthic_model.tar.gz
-  track_config: s3://902005-public/models/track-config/strong_sort_benthic.yaml
-  video_example: s3://902005-public/video/10frame/V4361_20211006T162656Z_h265_10frame.mp4

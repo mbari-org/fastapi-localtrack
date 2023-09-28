@@ -3,12 +3,12 @@
 # Description: Dispatcher to run jobs
 
 import asyncio
-import logging
 import signal
 import time
 from typing import List
 
-from .monitor import Monitor
+from daemon.monitor import Monitor
+from daemon.logger import info
 
 
 class Dispatcher:
@@ -16,14 +16,13 @@ class Dispatcher:
     def __init__(self, monitors: List[Monitor]) -> None:
         self._monitors = monitors
         self._monitor_tasks: List[asyncio.Task] = []
-        self._logger = logging.getLogger(self.__class__.__name__)
         self._stopping = False
 
     def run(self) -> None:
         asyncio.run(self.start())
 
     async def start(self) -> None:
-        self._logger.info("Starting up")
+        info("Starting up")
 
         for monitor in self._monitors:
             self._monitor_tasks.append(
@@ -43,11 +42,11 @@ class Dispatcher:
 
         self._stopping = True
 
-        self._logger.info("Shutting down")
+        info("Shutting down")
         for task, monitor in zip(self._monitor_tasks, self._monitors):
             task.cancel()
         self._monitor_tasks.clear()
-        self._logger.info("Shutdown finished successfully")
+        info("Shutdown finished successfully")
 
     @staticmethod
     async def _run_monitor(monitor: Monitor) -> None:

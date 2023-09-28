@@ -5,6 +5,7 @@
 import datetime
 import signal
 import random
+import os
 
 import docker
 from pathlib import Path
@@ -18,13 +19,16 @@ from fastapi.responses import JSONResponse
 
 from pydantic import BaseModel
 
-from app.conf import temp_path, root_bucket, model_prefix, engine, database_path, lagoon_names, lagoon_states
+from app.conf import temp_path, default_args, default_video_url, root_bucket, model_prefix, engine, database_path, lagoon_names, lagoon_states
 from app import __version__
 from app.job import JobLocal, MediaLocal, init_db
-from app.logger import info, debug
+from app.logger import info, debug, exception
 from app import logger
 from app.utils.exceptions import NotFoundException
 from app.utils.misc import check_video_availability, list_by_suffix
+
+if not os.getenv('MINIO_ENDPOINT_URL') or not os.getenv('MINIO_ACCESS_KEY') or not os.getenv('MINIO_SECRET_KEY'):
+    info(f"MINIO_ENDPOINT_URL, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY environment variables must be set")
 
 app = FastAPI()
 
@@ -50,7 +54,7 @@ def handle_sigint(signum, frame):
 # Set up the signal handler for SIGINT
 signal.signal(signal.SIGINT, handle_sigint)
 
-global model_paths, example_model
+global model_paths, default_model, example_video, default_args, default_video_url
 
 
 def fetch_models():
@@ -58,7 +62,7 @@ def fetch_models():
     Fetch the models from the minio bucket
     :return:
     """
-    global model_paths, example_model
+    global model_paths, default_model, example_video, default_video_url, default_args
     info(f'Fetching models from s3://{root_bucket}/{model_prefix}')
     model_s3 = list_by_suffix(root_bucket, model_prefix, ['.gz', '.pt'])
     debug(f'Creating dictionary of model names to model paths')
@@ -66,19 +70,21 @@ def fetch_models():
     debug(f'Found {len(model_paths)} models')
     # Get an example model to use for the API documentation
     if model_paths and len(model_paths) > 0:
-        example_model = list(model_paths.keys())[0]
+        default_model = list(model_paths.keys())[0]
     else:
-        example_model = None
+        default_model = None
 
+    if not check_video_availability(default_video_url):
+        default_video_url = None
 
 fetch_models()
 
 
 class PredictModel(BaseModel):
-    model: str | None = example_model
-    video: str | None = 'http://localhost:8090/video/V4361_20211006T162656Z_h265_10frame.mp4'
+    model: str | None = default_model
+    video: str | None = default_video_url
     metadata: dict | None = {}
-    args: str | None = '--conf-thres=0.01 --iou-thres=0.4 --max-det=100 --agnostic-nms --imgsz 640'
+    args: str | None = default_args
 
 
 # Exception handler for 404 errors

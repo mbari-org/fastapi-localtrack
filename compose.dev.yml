@@ -3,16 +3,16 @@ version: "3.8"
 services:
 
 ###################################################################
-# Minio Dependency
+# Minio and Nginx Dependencies
 ###################################################################
   minio:
     image: minio/minio:latest
-    container_name: minio-server
+    container_name: minio-dev-server
     env_file:
       - ./.env
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "7000:9000"
+      - "7001:9001"
     environment:
       - MINIO_ROOT_USER=${MINIO_ACCESS_KEY:-localtrack}
       - MINIO_ROOT_PASSWORD=${MINIO_SECRET_KEY:-ReplaceMePassword}
@@ -21,40 +21,19 @@ services:
     command: server --console-address ":9001" /minio_data
     networks:
       - minio-net
-###################################################################
-# Services
-###################################################################
-  fastapi:
-    image: mbari/fastapi-localtrack:${GIT_VERSION}
-    container_name: fastapi-localtrack
-    env_file:
-      - ./.env
+  nginx:
+    image: nginx:1.23.3
+    container_name: nginx-dev
     ports:
-      - "8000:80"
-    networks:
-      - minio-net
-  daemon:
-    image: mbari/fastapi-localtrack-daemon:${GIT_VERSION}
-    container_name: fastapi-localtrack-daemon
-    env_file:
-      - ./.env
-    environment:
-      - NOTIFY_URL=${NOTIFY_URL}
-      - MODEL_DIR=/models
-      - DATABASE_DIR=/sqlite_data
+      - "8090:80"
     volumes:
-      - ${HOME}/.aws:/root/.aws
-      - ${DATA_DIR}/sqlite_data:/sqlite_data
-      - ${DATA_DIR}/models:/models
-    networks:
-      - minio-net
-    restart: always
+      - ${DATA_DIR}/nginx:/data
 ###################################################################
 #  Setup Minio
 ###################################################################
   mc-minio:
     image: minio/mc:RELEASE.2023-09-22T05-07-46Z
-    container_name: setup-minio
+    container_name: setup-minio-dev
     depends_on:
       - minio
     env_file:
@@ -71,7 +50,9 @@ services:
       mc admin policy list myminio;
       mc admin policy attach myminio readwrite --user fastapi; 
       curl -O https://902005-public.s3.us-west-2.amazonaws.com/models/track-config/strong_sort_benthic.yaml;
-      -reid-model-url https://902005-public.s3.us-west-2.amazonaws.com/training/reid/benthic2017/osnet_ain_x0_75.pth.tar
+      curl -O https://902005-public.s3.us-west-2.amazonaws.com/video/10frame/V4361_20211006T162656Z_h265_10frame.mp4;
+      curl -O https://902005-public.s3.us-west-2.amazonaws.com/video/1sec/V4361_20211006T162656Z_h265_1sec.mp4;
+      curl -O https://902005-public.s3.us-west-2.amazonaws.com/video/1min/V4361_20211006T162656Z_h265_1min.mp4;
       mc cp strong_sort_benthic.yaml fastapi/${ROOT_BUCKET_NAME}/${MODEL_PREFIX}/track-config/strong_sort_benthic.yaml;
       exit 0;
       "

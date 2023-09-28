@@ -10,7 +10,6 @@ import signal
 from fastapi.testclient import TestClient
 
 from app.logger import info
-from tests.conf.setup import init_credentials, run_minio
 from app import logger
 
 # Test video url hosted on localhost; Requires running the test/runserver.sh script first
@@ -31,12 +30,6 @@ fake_metadata = {
 @pytest.fixture
 def startup():
     global client
-
-    # Initialize the credentials - this is needed before starting the app to set the environment variables
-    init_credentials()
-
-    # Start test minio server
-    run_minio()
 
     from app.main import app
     client = TestClient(app)
@@ -106,6 +99,15 @@ def test_predict_sans_metadata(startup, shutdown):
 
     assert response.status_code == 200
     assert response.json()['status'] == 'SUCCESS'
+
+    # Verify that we can get the results which are available via s3 in the metadata field s3_path
+    results = response.json()['metadata']['s3_path']
+    assert results is not None
+
+    # Download the results from s3
+    from daemon.misc import download_video
+    download_video(results, Path(__file__).parent / 'results.mp4')
+
 
 @pytest.mark.skipif(not DAEMON_AVAILABLE, reason="This test is excluded because it requires a daemon process")
 def test_predict_metadata(startup, shutdown):

@@ -8,7 +8,6 @@ from urllib import request
 import time
 import yaml
 from fastapi.testclient import TestClient
-from tests.conf.setup import init_credentials, run_minio
 import pytest
 import os
 import signal
@@ -21,12 +20,6 @@ logger = logger.create_logger_file(Path(__file__).parent, __file__)
 @pytest.fixture
 def startup():
     global client
-
-    # Initialize the credentials - this is needed before starting the app to set the environment variables
-    init_credentials()
-
-    # Start minio
-    run_minio()
 
     from app.main import app
     client = TestClient(app)

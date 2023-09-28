@@ -14,15 +14,15 @@ from deepsea_ai.database.job import Status, JobType
 from deepsea_ai.database.job.database_helper import json_b64_decode, json_b64_encode, get_status
 
 from app.job import MediaLocal, JobLocal, update_media, PydanticJobWithMedia2, init_db
-from app.logger import info, err, warn
+from daemon.logger import info, err, warn
 from daemon.docker_runner import DockerRunner
 
 DEFAULT_CONTAINER_NAME = 'strongsort'
 DEFAULT_ARGS = '--iou-thres 0.5 --conf-thres 0.01 --agnostic-nms --max-det 100'
- 
+
 
 class DockerClient:
-    
+
     async def process(self, database_path: Path, root_bucket: str, track_prefix: str,
                       s3_track_config: str) -> ClientResponse:
         """
@@ -135,7 +135,7 @@ class DockerClient:
             jobs_ids_queued = [job.id for job in docker_jobs if get_status(job) == Status.QUEUED]
             jobs_ids_running = [job.id for job in docker_jobs if get_status(job) == Status.RUNNING]
             info(f'Found {len(docker_jobs)} docker jobs in the database. '
-                        f'Number of queued jobs: {len(jobs_ids_queued)}. Number of running jobs: {len(jobs_ids_running)}')
+                 f'Number of queued jobs: {len(jobs_ids_queued)}. Number of running jobs: {len(jobs_ids_running)}')
         if len(jobs_ids_running) > 0:
             for job_id in jobs_ids_running:
                 # Should never get here unless something went wrong and the

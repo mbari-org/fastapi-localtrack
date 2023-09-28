@@ -1,15 +1,41 @@
 # fastapi-localtrack, Apache-2.0 license
 # Filename: daemon/docker_runner.py
 # Description:  Miscellaneous utility functions for the daemon
-
-import logging
+ 
 import os
-import asyncio
 import boto3
 import pathlib
 import requests
+from botocore.exceptions import NoCredentialsError
+from .logger import debug, info, err, exception
 
-logger = logging.getLogger(__name__)
+async def upload_file(obj, bucket, s3_path):
+    try:
+        s3 = boto3.client(
+            's3',
+            endpoint_url=os.environ['MINIO_ENDPOINT_URL'],
+            aws_access_key_id=os.environ['MINIO_ACCESS_KEY'],
+            aws_secret_access_key=os.environ['MINIO_SECRET_KEY'],
+            region_name='us-west-2',
+            config=boto3.session.Config(signature_version='s3v4')
+        )
+        # First check if the file exists in the bucket
+        try:
+            s3.head_object(Bucket=bucket, Key=s3_path)
+            info(f'File {s3_path} already exists in s3://{bucket}')
+            return True
+        except Exception:
+            pass
+
+        s3.upload_file(obj, bucket, s3_path)
+        info(f'File uploaded successfully to s3://{bucket}/{s3_path}')
+        return True
+    except FileNotFoundError:
+        exception("The file was not found")
+        return False
+    except NoCredentialsError:
+        exception("Credentials not available")
+        raise Exception("Credentials not available. Check your AWS credentials")
 
 
 async def upload_files_to_s3(bucket: str, local_path: str, s3_path: str, suffixes: list[str] = None) -> int:
@@ -22,28 +48,25 @@ async def upload_files_to_s3(bucket: str, local_path: str, s3_path: str, suffixe
     :return: Number of files uploaded
     """
 
-    logger.info(f'Uploading files from {local_path} to s3://{bucket}/{s3_path} with suffixes {suffixes}')
-
-    if 'AWS_DEFAULT_PROFILE' in os.environ:
-        session = boto3.Session(profile_name=os.environ['AWS_DEFAULT_PROFILE'])
-        s3 = session.client('s3')
-    else:
-        s3 = boto3.client('s3')
+    info(f'Uploading files from {local_path} to s3://{bucket}/{s3_path} with suffixes {suffixes}')
 
     num_uploaded = 0
     try:
+        local_path = pathlib.Path(local_path)
+        if not local_path.exists():
+            err(f"Could not find {local_path}")
+            return 0
+
         for obj in pathlib.Path(local_path).iterdir():
             if obj.is_file():
                 for s in suffixes:
                     if obj.suffix == s:
-                        logger.debug(f'Uploading {obj.as_posix()} to s3://{bucket}/{s3_path}')
-                        await asyncio.to_thread(s3.upload_file, obj.as_posix(), bucket, f'{s3_path}/{obj.name}')
+                        await upload_file(obj, bucket, f'{s3_path}/{obj.name}')
                         num_uploaded += 1
     except Exception as e:
-        logger.exception(f'Error uploading files: {e}')
-        raise e
+        exception(f'Error uploading files: {e}')
+        return 0
     finally:
-        logger.info(f'Uploaded {num_uploaded} files to s3://{bucket}/{s3_path}')
         return num_uploaded
 
 
@@ -59,13 +82,15 @@ async def verify_upload(bucket: str, prefix: str) -> bool:
         f.write("testing s3 upload")
 
     try:
-        await upload_files_to_s3(bucket, check_path.parent, prefix, ['.txt'])
-        return True
-    except Exception as e:
+        num_uploaded = await upload_files_to_s3(bucket, check_path.parent, prefix, ['.txt'])
+        if num_uploaded == 1:
+            return True
+    except Exception:
         return False
     finally:
         check_path.unlink()
 
+    return False
 
 def download_video(url: str, save_path: pathlib.Path) -> bool:
     """
@@ -83,10 +108,10 @@ def download_video(url: str, save_path: pathlib.Path) -> bool:
         with save_path.open('wb') as file:
             for chunk in response.iter_content(chunk_size=8192):
                 file.write(chunk)
-        logger.info(f"Video {url} downloaded successfully to {save_path}.")
+        info(f"Video {url} downloaded successfully to {save_path}.")
         return True
     else:
-        logger.error(f"Failed to download {url} to {save_path}")
+        err(f"Failed to download {url} to {save_path}")
         return False
 
 

@@ -20,12 +20,14 @@ def list_by_suffix(bucket: str, prefix: str, suffixes: list[str]) -> list[str]:
     :param suffixes: the suffixes to fetch, e.g. ['tar.gz', 'pt']
     :return: list of objects with the given suffixes, s3://bucket/prefix/object.suffix
     """
-    if 'AWS_DEFAULT_PROFILE' in os.environ:
-        info(f'Using AWS profile {os.environ["AWS_DEFAULT_PROFILE"]}')
-        session = boto3.Session(profile_name=os.environ['AWS_DEFAULT_PROFILE'])
-    else:
-        session = boto3.Session()
-    s3 = session.client('s3')
+    s3 = boto3.client(
+        's3',
+        endpoint_url=os.environ['MINIO_ENDPOINT_URL'],
+        aws_access_key_id=os.environ['MINIO_ACCESS_KEY'],
+        aws_secret_access_key=os.environ['MINIO_SECRET_KEY'],
+        region_name='us-west-2',
+        config=boto3.session.Config(signature_version='s3v4')
+    )
     objects = []
 
     try:

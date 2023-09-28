@@ -2,28 +2,11 @@
  
 Install for local development with
 
-
-**Follow the README.md instructions for installing the conda environment**
-
-The tests require the example data to be downloaded and a working web server that
-can service video with test video. This can be done with the following:
-
 ```shell
-./bin/start.sh
-./test/run_nginx.sh
-```
-
-Once that is done, you can run the api app and the daemon with:
-```shell
-conda activate fastapi-microtrack
-export PYTHONPATH=$PWD/src:$PWD/tests
-export AWS_DEFAULT_PROFILE=minio-localtrack
-cd src/app
-python -m daemon &
-uvicorn main:app --reload
+./bin/run_dev.sh
 ```
  
-This will start the FastAPI server on port 8000, and
+This will start an NGINX server, FastAPI server on port 8000, and
 run the daemon for processing. 
 
 Open the browser to http://localhost:8000/docs to see the API documentation.

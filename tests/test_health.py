@@ -3,11 +3,6 @@
 # Description: Test health endpoint
 
 from pathlib import Path
-from conf import init_credentials, run_minio
-
-# Initialize the credentials - this is needed before starting the app to set the environment variables
-init_credentials()
-
 from app.job import init_db
 from fastapi.testclient import TestClient
 
@@ -18,9 +13,11 @@ from app import logger
 
 logger = logger.create_logger_file(Path(__file__).parent, __file__)
 
+
 @pytest.fixture
 def shutdown():
     os.kill(os.getpid(), signal.SIGINT)
+
 
 global session_maker
 
@@ -29,25 +26,21 @@ fake_metadata = {
     "instance_type": "fake_instance_type",
 }
 
+
 @pytest.fixture
 def startup():
     global client
     global session_maker
-
-    # Initialize the credentials - this is needed before starting the app to set the environment variables
-    init_credentials()
-
-    # Start minio
-    run_minio()
-
     session_maker = init_db(Path.cwd() / 'db', reset=True)
 
     from app.main import app
     client = TestClient(app)
 
+
 @pytest.fixture
 def shutdown():
     os.kill(os.getpid(), signal.SIGINT)
+
 
 def test_health(startup, shutdown):
     # The health endpoint should return a 200 status code

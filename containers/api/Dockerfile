@@ -31,11 +31,12 @@ RUN virtualenv /env -p python3
 ENV VIRTUAL_ENV /env
 ENV PATH /env/bin:$PATH
 
-## install requirements
+## install requirements and copy source
 ENV PYTHONPATH=/src
 WORKDIR /src/app
 COPY ./src/requirements.txt /src/requirements.txt
 COPY ./src/app /src/app
+COPY config.yml  /config.yml
 RUN pip install --no-cache-dir --upgrade -r /src/requirements.txt
 
 # run the FastAPI server

@@ -44,6 +44,7 @@ ENV PYTHONPATH=/src
 WORKDIR /src/app
 COPY ./src/requirements.txt /src/requirements.txt
 COPY ./src /src
+COPY ./config.yml /config.yml
 RUN pip install --no-cache-dir --upgrade -r /src/requirements.txt
 
 # run the daemon
