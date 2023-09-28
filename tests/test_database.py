@@ -223,7 +223,9 @@ def test_add_one_media(startup):
         job_p = PydanticJobWithMedia2.from_orm(job)
         num_media2 = len(job_p.media)
 
-        add_vid3(db)
+        job = db.query(JobLocal).first()  # Get the first job
+        vid1 = MediaLocal(id=3, name="vid3.mp4", status=Status.QUEUED, updatedAt=datetime.now(), job=job)
+        db.add(vid1)
 
         # Verify that the number of media2 has increased by 1
         job_updated = db.query(JobLocal).first()
@@ -236,7 +238,11 @@ def test_update_one_media(startup):
     Test updating a media with a new media object updates the media timestamp.
     """
     with session_maker.begin() as db:
-        add_vid3(db)
+
+        job = db.query(JobLocal).first()  # Get the first job
+        vid1 = MediaLocal(id=3, name="vid3.mp4", status=Status.QUEUED, updatedAt=datetime.now(), job=job)
+        db.add(vid1)
+
         time.sleep(1)  # sleep for 1 second to ensure the timestamp is different
 
         job = db.query(JobLocal).first()
