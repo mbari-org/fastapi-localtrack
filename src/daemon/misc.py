@@ -4,7 +4,7 @@
 
 import logging
 import os
-
+import asyncio
 import boto3
 import pathlib
 import requests
@@ -12,52 +12,17 @@ import requests
 logger = logging.getLogger(__name__)
 
 
-def list_by_suffix(bucket: str, prefix: str, suffixes: list[str]) -> list[str]:
-    """
-    Fetch all the objects in the bucket with the given prefix and save them to the local path
-    :param bucket: the bucket to fetch from
-    :param prefix: the prefix to fetch
-    :param suffixes: the suffixes to fetch, e.g. ['tar.gz', 'pt']
-    :return: list of objects with the given suffixes, s3://bucket/prefix/object.suffix
-    """
-    if 'AWS_DEFAULT_PROFILE' in os.environ:
-        logger.info(f'Using AWS profile {os.environ["AWS_DEFAULT_PROFILE"]}')
-        session = boto3.Session(profile_name=os.environ['AWS_DEFAULT_PROFILE'])
-    else:
-        session = boto3.Session()
-    s3 = session.client('s3')
-    objects = []
-
-    try:
-        logger.debug(f'Listing objects in s3://{bucket}/{prefix}')
-        response = s3.list_objects_v2(Bucket=bucket, Prefix=prefix)
-        if 'Contents' in response:
-            logger.info(f'Found {len(response["Contents"])} objects in s3://{bucket}/{prefix}')
-            for obj in response['Contents']:
-                for s in suffixes:
-                    if pathlib.Path(obj['Key']).suffix == s:
-                        logger.debug(f'Found {obj["Key"]} in s3://{bucket}')
-                        objects.append(f"s3://{bucket}/{obj['Key']}")
-        else:
-            logger.info(f'Bucket {bucket} is empty')
-    except Exception as e:
-        logger.exception(f'Error listing objects: {e}')
-        raise e
-
-    return objects
-
-
-def upload_files_to_s3(bucket: str, local_path: str, s3_path: str, suffixes: list[str] = None) -> None:
+async def upload_files_to_s3(bucket: str, local_path: str, s3_path: str, suffixes: list[str] = None) -> int:
     """
     Upload all the files in the local path with the given suffixes to the s3 path
     :param bucket: the bucket to upload to
     :param local_path: the local path to upload from
     :param s3_path: the s3 path to upload to
     :param suffixes: the suffixes to upload, e.g. ['tar.gz', 'mp4']
-    :return: None
+    :return: Number of files uploaded
     """
 
-    logger.info(f'Uploading files from {local_path} to s3://{bucket}/{s3_path}')
+    logger.info(f'Uploading files from {local_path} to s3://{bucket}/{s3_path} with suffixes {suffixes}')
 
     if 'AWS_DEFAULT_PROFILE' in os.environ:
         session = boto3.Session(profile_name=os.environ['AWS_DEFAULT_PROFILE'])
@@ -65,19 +30,24 @@ def upload_files_to_s3(bucket: str, local_path: str, s3_path: str, suffixes: lis
     else:
         s3 = boto3.client('s3')
 
+    num_uploaded = 0
     try:
         for obj in pathlib.Path(local_path).iterdir():
             if obj.is_file():
                 for s in suffixes:
                     if obj.suffix == s:
                         logger.debug(f'Uploading {obj.as_posix()} to s3://{bucket}/{s3_path}')
-                        s3.upload_file(obj.as_posix(), bucket, f'{s3_path}/{obj.name}')
+                        await asyncio.to_thread(s3.upload_file, obj.as_posix(), bucket, f'{s3_path}/{obj.name}')
+                        num_uploaded += 1
     except Exception as e:
         logger.exception(f'Error uploading files: {e}')
         raise e
+    finally:
+        logger.info(f'Uploaded {num_uploaded} files to s3://{bucket}/{s3_path}')
+        return num_uploaded
 
 
-def verify_upload(bucket: str, prefix: str) -> bool:
+async def verify_upload(bucket: str, prefix: str) -> bool:
     """
     Verify that the upload_files_to_s3 function works
     :param bucket: The bucket to upload to
@@ -89,7 +59,7 @@ def verify_upload(bucket: str, prefix: str) -> bool:
         f.write("testing s3 upload")
 
     try:
-        upload_files_to_s3(bucket, check_path.parent, prefix, ['.txt'])
+        await upload_files_to_s3(bucket, check_path.parent, prefix, ['.txt'])
         return True
     except Exception as e:
         return False

@@ -96,7 +96,7 @@ class DockerRunner:
         logger.info(f'Processing {self.video_url} with {self.model_s3} and {self.track_s3} to {self.output_s3}')
 
         # Download the video at the self.video_url to the self.in_path
-        if download_video(self.video_url, self.in_path):
+        if await asyncio.to_thread(download_video(self.video_url, self.in_path)):
             logger.info(f'Video {self.video_url} downloaded to {self.in_path}')
         else:
             logger.error(f'Failed to download {self.video_url} to {self.in_path.as_posix()}.'
@@ -127,7 +127,7 @@ class DockerRunner:
 
         # Upload the results to s3
         p = urlparse(self.output_s3)  # remove trailing slash
-        upload_files_to_s3(bucket=p.netloc,
+        await upload_files_to_s3(bucket=p.netloc,
                            s3_path=p.path.lstrip('/'),
                            local_path=self.out_path.as_posix(),
                            suffixes=['.gz', '.json', ".mp4"])

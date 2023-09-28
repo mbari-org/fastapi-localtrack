@@ -11,7 +11,7 @@ from daemon.misc import verify_upload
 import yaml
 from dependency_injector import containers, providers
 
-from . import http_client, docker_client, monitor, dispatcher
+from . import model_sync_client, docker_client, monitor, dispatcher
 
 
 class Container(containers.DeclarativeContainer):
@@ -38,13 +38,14 @@ class Container(containers.DeclarativeContainer):
         format=config.log.format,
     )
 
-    http_client = providers.Factory(http_client.HttpClient)
+    model_sync_client = providers.Factory(model_sync_client.ModelSyncClient)
     docker_client = providers.Factory(docker_client.DockerClient)
 
-    example_monitor = providers.Factory(
-        monitor.HttpMonitor,
-        http_client=http_client,
-        options=config.monitors.example,
+    sync_monitor = providers.Factory(
+        monitor.ModelSyncMonitor,
+        model_sync_client=model_sync_client,
+        minio=config.minio,
+        options=config.monitors.models,
     )
 
     docker_monitor = providers.Factory(
@@ -59,6 +60,6 @@ class Container(containers.DeclarativeContainer):
         dispatcher.Dispatcher,
         monitors=providers.List(
             docker_monitor,
-            example_monitor,
+            sync_monitor,
         ),
     )

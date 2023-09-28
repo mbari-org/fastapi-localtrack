@@ -7,7 +7,7 @@ import time
 from pathlib import Path
 from typing import Dict, Any
 
-from daemon.http_client import HttpClient
+from daemon.model_sync_client import ModelSyncClient
 from daemon.docker_client import DockerClient
 
 
@@ -40,7 +40,7 @@ class DockerMonitor(Monitor):
     async def check(self) -> None:
         time_start = time.time()
 
-        response = await self._client.process(
+        await self._client.process(
             database_path=self._database_path,
             root_bucket=self._root_bucket,
             track_prefix=self._track_prefix,
@@ -53,40 +53,30 @@ class DockerMonitor(Monitor):
         self.logger.info( f"Check  request took: {round(time_took, 3)} seconds")
 
 
-class HttpMonitor(Monitor):
+class ModelSyncMonitor(Monitor):
 
     def __init__(
             self,
-            http_client: HttpClient,
+            model_sync_client: ModelSyncClient,
+            minio: Dict[str, Any],
             options: Dict[str, Any],
     ) -> None:
-        self._client = http_client
-        self._method = options.pop("method")
-        self._url = options.pop("url")
-        self._timeout = options.pop("timeout")
+        self._client = model_sync_client
+        self._root_bucket = "m3-video-processing"
+        self._model_prefix = minio.pop("model_prefix")
+        self._model_path = Path(options.pop("path"))
         super().__init__(check_every=options.pop("check_every"))
 
     async def check(self) -> None:
         time_start = time.time()
 
-        response = await self._client.request(
-            method=self._method,
-            url=self._url,
-            timeout=self._timeout,
+        ok, num_models = await self._client.run(
+            root_bucket=self._root_bucket,
+            model_prefix=self._model_prefix,
+            model_path=self._model_path
         )
 
         time_end = time.time()
         time_took = time_end - time_start
 
-        self.logger.info(
-            "Check\n"
-            "    %s %s\n"
-            "    response code: %s\n"
-            "    content length: %s\n"
-            "    request took: %s seconds",
-            self._method,
-            self._url,
-            response.status,
-            response.content_length,
-            round(time_took, 3)
-        )
+        self.logger.info(f'ModelSyncClient request took: {round(time_took, 3)} seconds. Result: {ok}. Found {num_models} models')

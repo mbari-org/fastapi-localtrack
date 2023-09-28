@@ -6,13 +6,12 @@ database:
   path: "/tmp/db"
 
 monitors:
-  example:
-    method: "GET"
-    url: "http://localhost:8090"
-    timeout: 300
-    check_every: 3000
+  models:
+    path: "/tmp/models"
+    check_every: 60
+
   docker:
-    check_every: 5
+    check_every: 500
 
 minio:
   strongsort_track_config: s3://m3-video-processing/track-config/strong_sort_benthic.yaml
