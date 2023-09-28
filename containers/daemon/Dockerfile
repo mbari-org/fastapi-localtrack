@@ -1,12 +1,12 @@
 # ================================================================
-#  Docker image for fastapi-miniotrack
+#  Docker image for fastapi-localtrack-daemon
 #  ================================================================
 FROM ubuntu:20.04
 LABEL vendor="MBARI"
 LABEL maintainer="Danelle Cline dcline@mbari.org"
 LABEL license="GPL"
 
-ARG IMAGE_URI=mbari/fastapi-yolov5
+ARG IMAGE_URI=mbari/fastapi-localtrack-daemon
 
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt update -y && apt install -y software-properties-common && \
@@ -42,10 +42,9 @@ ENV PATH /env/bin:$PATH
 ## install requirements
 ENV PYTHONPATH=/src
 WORKDIR /src/app
-COPY ./requirements.txt /src/requirements.txt
-COPY ./app /src/app
+COPY ./src/requirements.txt /src/requirements.txt
+COPY ./src /src
 RUN pip install --no-cache-dir --upgrade -r /src/requirements.txt
 
-# run the server
-EXPOSE 80
-ENTRYPOINT ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "80"]
+# run the daemon
+ENTRYPOINT ["python", "-m", "daemon"]
