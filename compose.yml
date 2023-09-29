@@ -8,6 +8,7 @@ services:
   minio:
     image: minio/minio:latest
     container_name: minio-server
+    hostname: minio
     env_file:
       - ./.env
     ports:
@@ -43,7 +44,6 @@ services:
       - MODEL_DIR=/models
       - DATABASE_DIR=/sqlite_data
     volumes:
-      - ${HOME}/.aws:/root/.aws
       - ${DATA_DIR}/sqlite_data:/sqlite_data
       - ${DATA_DIR}/models:/models
     networks:
@@ -64,15 +64,15 @@ services:
     entrypoint: >
       /bin/sh -c "
       mc alias set myminio http://minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY};
-      mc mb --ignore-existing fastapi/${ROOT_BUCKET_NAME}/${MODEL_PREFIX};
-      mc mb --ignore-existing fastapi/${ROOT_BUCKET_NAME}/${TRACK_PREFIX};
-      mc mb --ignore-existing fastapi/${ROOT_BUCKET_NAME}/${VIDEO_PREFIX};
+      mc mb --ignore-existing myminio/${ROOT_BUCKET_NAME}/${MODEL_PREFIX};
+      mc mb --ignore-existing myminio/${ROOT_BUCKET_NAME}/${TRACK_PREFIX};
       mc admin user add myminio fastapi ${MINIO_LIVE_ACCESS_KEY};
       mc admin policy list myminio;
       mc admin policy attach myminio readwrite --user fastapi; 
+      curl -O https://902005-public.s3.us-west-2.amazonaws.com/models/Megadetector/best.pt;
       curl -O https://902005-public.s3.us-west-2.amazonaws.com/models/track-config/strong_sort_benthic.yaml;
-      -reid-model-url https://902005-public.s3.us-west-2.amazonaws.com/training/reid/benthic2017/osnet_ain_x0_75.pth.tar
-      mc cp strong_sort_benthic.yaml fastapi/${ROOT_BUCKET_NAME}/${MODEL_PREFIX}/track-config/strong_sort_benthic.yaml;
+      mc cp strong_sort_benthic.yaml ${ROOT_BUCKET_NAME}/${MODEL_PREFIX}/track-config/strong_sort_benthic.yaml;
+      mc cp best.pt myminio/${ROOT_BUCKET_NAME}/${MODEL_PREFIX}/MegadetectorTest.pt;
       exit 0;
       "
 networks:

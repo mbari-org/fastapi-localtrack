@@ -3,6 +3,7 @@
 Install for local development with
 
 ```shell
+conda env create
 ./bin/run_dev.sh
 ```
  

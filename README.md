@@ -11,6 +11,7 @@ For deployment, you will need:
 
 For development, you will need:
 - [Python >=3.10](https://www.python.org/downloads/)
+- [Anaconda](https://www.anaconda.com/)
  
 # TODO
 
@@ -34,6 +35,7 @@ cd fastapi-localtrack
 ```
 
 Your server is now running at `http://localhost:3000/docs`
+
 Data is stored in the minio server at `http://localhost:9000`
 
 You can access the minio server at http://localhost:9000.  The default credentials are:
@@ -46,32 +48,42 @@ Open the browser to http://localhost:3000/docs to see the API documentation.
 
 ### Health Check
 Check the health of the server by going to `http://localhost:3000/health`.  You should see the following response:
-This checks if docker is running and if any models are available
+
 ```json
 {"status":"ok"}
 ```
 
 ### See all jobs
-Check the status of all jobs at `http://localhost:3000/health`
+Check the status of all jobs at `http://localhost:3000/status`
 
 ```json
-
+{
+  "jobs": [
+    {
+      "id": 1,
+      "name": "yolov5s.pt V4361_20211006T162656Z_h265_10frame hawthorne standing",
+      "status": "QUEUED"
+    }
+  ]
+}
 ```
 
 ### Model weights
 
 YOLOv5 model weights in .pt files or contained in a tar.gz file as packaged in the 
 [deepsea-ai train](http://docs.mbari.org/deepsea-ai/commands/train/) command are currently supported.
-The assumption is that each are .pt or .tar.gz file is unique, creating a key that
-is used for training the model.
+The assumption is that each are .pt or .tar.gz file is unique as 
+it is used to create a key that is used for training the model.
 
 ### Minio
 
 [minio](https://min.io/) is an open source S3 compatible object store.  It is used to store models, track configuration files 
-and results from track processing.  It needs to be running to use the API and is started automatically when 
-you run the docker container.
+and track results from processing video.  It needs to be running to use the API and is started automatically when 
+you run the [./bin/docker_run.sh](./bin/docker_run.sh).
 
 ### Authentication
 
 The credentials can be changed in the  .env file. See [.env](.env) for details.
  
+To setup the receiving notification service add the NOTIFY_URL to the .env file. 
+The results will be available in the minio server if the notification service goes down.

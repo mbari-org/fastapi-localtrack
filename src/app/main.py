@@ -7,7 +7,6 @@ import signal
 import random
 import os
 
-import docker
 from pathlib import Path
 from urllib.parse import urlparse
 
@@ -19,10 +18,11 @@ from fastapi.responses import JSONResponse
 
 from pydantic import BaseModel
 
-from app.conf import temp_path, default_args, default_video_url, root_bucket, model_prefix, engine, database_path, lagoon_names, lagoon_states
+from app.conf import temp_path, default_args, default_video_url, root_bucket, model_prefix, engine, database_path, \
+    lagoon_names, lagoon_states
 from app import __version__
 from app.job import JobLocal, MediaLocal, init_db
-from app.logger import info, debug, exception
+from app.logger import info, debug
 from app import logger
 from app.utils.exceptions import NotFoundException
 from app.utils.misc import check_video_availability, list_by_suffix
@@ -153,8 +153,13 @@ async def root():
 async def root():
     # Check if models are available and return a 503 error if not
     fetch_models()
+    database_online = is_database_online()
+
     if len(model_paths) == 0:
         return {"message": "no models available"}, 503
+
+    if not database_online:
+        return {"message": "database offline"}, 503
 
     return {"message": "OK"}
 
@@ -232,3 +237,13 @@ async def get_status_all():
     with session_maker.begin() as db:
         jobs = db.query(JobLocal).filter(JobLocal.job_type == JobType.DOCKER).all()
         return {"jobs": [{"id": job.id, "name": job.name, "status": get_status(job)} for job in jobs]}
+
+
+def is_database_online():
+    """
+    True if we can get a session to the database
+    :return:
+    """
+    with session_maker.begin() as db:
+        return True
+    return False

@@ -5,11 +5,12 @@ services:
 ###################################################################
 # Minio and Nginx Dependencies
 ###################################################################
-  minio:
+  dev-minio:
     image: minio/minio:latest
-    container_name: minio-dev-server
+    container_name: dev-minio-server
+    hostname: dev-minio
     env_file:
-      - ./.env
+      - ./.env.dev
     ports:
       - "7000:9000"
       - "7001:9001"
@@ -20,42 +21,43 @@ services:
       - ${DATA_DIR}/minio_data:/minio_data
     command: server --console-address ":9001" /minio_data
     networks:
-      - minio-net
+      - dev-minio-net
   nginx:
-    image: nginx:1.23.3
-    container_name: nginx-dev
+    image: mbari/nginx
+    container_name: dev-nginx
     ports:
       - "8090:80"
     volumes:
-      - ${DATA_DIR}/nginx:/data
+      - ${DATA_DIR}/nginx:/data:ro
 ###################################################################
 #  Setup Minio
 ###################################################################
   mc-minio:
     image: minio/mc:RELEASE.2023-09-22T05-07-46Z
-    container_name: setup-minio-dev
+    container_name: dev-setup-minio
     depends_on:
-      - minio
+      -  dev-minio
     env_file:
-      - ./.env
+      - ./.env.dev
     networks:
-      - minio-net
+      - dev-minio-net
     entrypoint: >
       /bin/sh -c "
-      mc alias set myminio http://minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY};
-      mc mb --ignore-existing fastapi/${ROOT_BUCKET_NAME}/${MODEL_PREFIX};
-      mc mb --ignore-existing fastapi/${ROOT_BUCKET_NAME}/${TRACK_PREFIX};
-      mc mb --ignore-existing fastapi/${ROOT_BUCKET_NAME}/${VIDEO_PREFIX};
+      mc alias set myminio http://minio-dev:7000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY};
+      mc mb --ignore-existing myminio/${ROOT_BUCKET_NAME}/${MODEL_PREFIX};
+      mc mb --ignore-existing myminio/${ROOT_BUCKET_NAME}/${TRACK_PREFIX};
       mc admin user add myminio fastapi ${MINIO_LIVE_ACCESS_KEY};
       mc admin policy list myminio;
-      mc admin policy attach myminio readwrite --user fastapi; 
+      mc admin policy attach myminio readwrite --user fastapi;
+      curl -O https://902005-public.s3.us-west-2.amazonaws.com/models/Megadetector/best.pt;
       curl -O https://902005-public.s3.us-west-2.amazonaws.com/models/track-config/strong_sort_benthic.yaml;
       curl -O https://902005-public.s3.us-west-2.amazonaws.com/video/10frame/V4361_20211006T162656Z_h265_10frame.mp4;
       curl -O https://902005-public.s3.us-west-2.amazonaws.com/video/1sec/V4361_20211006T162656Z_h265_1sec.mp4;
       curl -O https://902005-public.s3.us-west-2.amazonaws.com/video/1min/V4361_20211006T162656Z_h265_1min.mp4;
-      mc cp strong_sort_benthic.yaml fastapi/${ROOT_BUCKET_NAME}/${MODEL_PREFIX}/track-config/strong_sort_benthic.yaml;
+      mc cp strong_sort_benthic.yaml myminio/${ROOT_BUCKET_NAME}/${MODEL_PREFIX}/track-config/strong_sort_benthic.yaml;
+      mc cp best.pt myminio/${ROOT_BUCKET_NAME}/${MODEL_PREFIX}/MegadetectorTest.pt;
       exit 0;
       "
 networks:
-  minio-net:
+  dev-minio-net:
     external: true

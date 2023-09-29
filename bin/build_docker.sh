@@ -12,15 +12,15 @@ cd $BASE_DIR
 
  docker build \
 --build-arg IMAGE_URI=mbari/fastapi-localtrack:"${git_hash}"  \
---no-cache \
+ --network host \
 -t mbari/fastapi-localtrack:"${git_hash}" \
 -f containers/api/Dockerfile .
 
 
 docker build \
 --build-arg IMAGE_URI=mbari/fastapi-localtrack-daemon:"${git_hash}"  \
---no-cache \
+ --network host \
 -t mbari/fastapi-localtrack-daemon:"${git_hash}" \
 -f containers/daemon/Dockerfile .
 
-docker build -t mbari/nginx -f containers/containers/nginx/Dockerfile .
+docker build -t mbari/nginx -f containers/nginx/Dockerfile .
