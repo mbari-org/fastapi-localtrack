@@ -151,14 +151,7 @@ async def root():
 
 @app.get("/health", status_code=status.HTTP_200_OK)
 async def root():
-    # Check if docker is available on the host and models are available
-    # if not, return a 503 error
-    client = docker.from_env()
-    try:
-        client.ping()
-    except Exception as e:
-        return {"message": f"docker not available {e}"}, 503
-
+    # Check if models are available and return a 503 error if not
     fetch_models()
     if len(model_paths) == 0:
         return {"message": "no models available"}, 503
@@ -189,7 +182,7 @@ async def process_video(item: PredictModel):
     if model_name not in model_paths.keys():
         raise NotFoundException(name=model_name)
 
-    # Create a name for the job based on the video prefix, model name and the timestamp
+    # Create a name for the job based on the video prefix, model name and lagoon fun to honor Duane and his lagoons
     video_name = video.split('=')[-1]
     # random number in the range of the lagoons
     index_name = random.randint(0, len(lagoon_names) - 1)
