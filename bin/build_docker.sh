@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build the docker images and start the compose stack
-# Run with ./build.sh
+# Build the docker images. Needs to be run before ./run_docker.sh
+# Run with ./build_docker.sh
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd )"
 BASE_DIR="$(cd "$(dirname "${SCRIPT_DIR}/../.." )" && pwd )"
