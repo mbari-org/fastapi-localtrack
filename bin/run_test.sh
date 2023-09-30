@@ -1,16 +1,10 @@
 #!/usr/bin/env bash
-# Build the stack for development
+# Run tests
 # Fetch a few videos to serve in the default nginx/video directory and start the stack
-# Run with ./run_dev.sh, or ./run_dev.sh build to force a rebuild of the docker images
 
 # Get the directory of this script and the base directory
 SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 BASE_DIR="$(cd "$(dirname "${SCRIPT_DIR}/../.." )" && pwd )"
-
-if [ "$1" == "build" ]; then
-  echo "Build the docker images"
-  ./bin/build_docker.sh
-fi
 
 # Get the short version of the hash of the commit
 git_hash=$(git log -1 --format=%h)
@@ -47,10 +41,10 @@ echo "Minio server running at http://localhost:7000"
 echo "FastAPI server running at http://localhost:8001"
 echo "FastAPI docs running at http://localhost:8001/docs"
 
-### Run the daemon and the api server
+### Run the daemon and the tests which simulate the api server
 conda activate fastapi-localtrack
-export PYTHONPATH=$BASE_DIR/src:$BASE_DIR/tests
+export PYTHONPATH=$BASE_DIR/src
 pkill -f "python -m daemon"
 pkill -f "uvicorn main:app"
-cd $BASE_DIR/src && python -m daemon &
-cd $BASE_DIR/src/app && uvicorn main:app --port 8001 --reload
+#cd $BASE_DIR/src python -m daemon &
+cd $BASE_DIR && PYTHONPATH=$BASE_DIR/src  pytest

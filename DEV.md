@@ -4,11 +4,12 @@ Install for local development with
 
 ```shell
 conda env create
-./bin/run_dev.sh
+./bin/run_dev.sh (optional)build
 ```
  
 This will start an NGINX server, FastAPI server on port 8000, and
-run the daemon for processing. 
+run the daemon for processing.  Adding the `build` argument will
+rebuild the docker images and
 
 Open the browser to http://localhost:8000/docs to see the API documentation.
  

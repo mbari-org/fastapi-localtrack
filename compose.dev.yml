@@ -43,7 +43,7 @@ services:
       - dev-minio-net
     entrypoint: >
       /bin/sh -c "
-      mc alias set myminio http://minio-dev:7000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY};
+      mc alias set myminio http://dev-minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY};
       mc mb --ignore-existing myminio/${ROOT_BUCKET_NAME}/${MODEL_PREFIX};
       mc mb --ignore-existing myminio/${ROOT_BUCKET_NAME}/${TRACK_PREFIX};
       mc admin user add myminio fastapi ${MINIO_LIVE_ACCESS_KEY};
@@ -51,13 +51,12 @@ services:
       mc admin policy attach myminio readwrite --user fastapi;
       curl -O https://902005-public.s3.us-west-2.amazonaws.com/models/Megadetector/best.pt;
       curl -O https://902005-public.s3.us-west-2.amazonaws.com/models/track-config/strong_sort_benthic.yaml;
-      curl -O https://902005-public.s3.us-west-2.amazonaws.com/video/10frame/V4361_20211006T162656Z_h265_10frame.mp4;
-      curl -O https://902005-public.s3.us-west-2.amazonaws.com/video/1sec/V4361_20211006T162656Z_h265_1sec.mp4;
-      curl -O https://902005-public.s3.us-west-2.amazonaws.com/video/1min/V4361_20211006T162656Z_h265_1min.mp4;
       mc cp strong_sort_benthic.yaml myminio/${ROOT_BUCKET_NAME}/${MODEL_PREFIX}/track-config/strong_sort_benthic.yaml;
       mc cp best.pt myminio/${ROOT_BUCKET_NAME}/${MODEL_PREFIX}/MegadetectorTest.pt;
       exit 0;
       "
+    volumes:
+      - ${DATA_DIR}/objects:/data
 networks:
   dev-minio-net:
     external: true

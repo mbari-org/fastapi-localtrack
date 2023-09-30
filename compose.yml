@@ -75,6 +75,9 @@ services:
       mc cp best.pt myminio/${ROOT_BUCKET_NAME}/${MODEL_PREFIX}/MegadetectorTest.pt;
       exit 0;
       "
+    volumes:
+      - ${DATA_DIR}/objects:/data
+
 networks:
   minio-net:
     external: true

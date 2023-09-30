@@ -1,15 +1,17 @@
 # fastapi-localtrack, Apache-2.0 license
 # Filename: daemon/docker_runner.py
 # Description:  Miscellaneous utility functions for the daemon
- 
+
 import os
 import boto3
 import pathlib
+import tempfile
 import requests
 from botocore.exceptions import NoCredentialsError
 from .logger import debug, info, err, exception
 
-async def upload_file(obj, bucket, s3_path):
+
+async def upload_file(obj, bucket, s3_path) -> bool:
     try:
         s3 = boto3.client(
             's3',
@@ -24,7 +26,8 @@ async def upload_file(obj, bucket, s3_path):
             s3.head_object(Bucket=bucket, Key=s3_path)
             info(f'File {s3_path} already exists in s3://{bucket}')
             return True
-        except Exception:
+        except Exception as ex:
+            exception(f'Error checking if file exists: {ex}')
             pass
 
         s3.upload_file(obj, bucket, s3_path)
@@ -61,8 +64,8 @@ async def upload_files_to_s3(bucket: str, local_path: str, s3_path: str, suffixe
             if obj.is_file():
                 for s in suffixes:
                     if obj.suffix == s:
-                        await upload_file(obj, bucket, f'{s3_path}/{obj.name}')
-                        num_uploaded += 1
+                        if await upload_file(obj, bucket, f'{s3_path}/{obj.name}'):
+                            num_uploaded += 1
     except Exception as e:
         exception(f'Error uploading files: {e}')
         return 0
@@ -77,20 +80,22 @@ async def verify_upload(bucket: str, prefix: str) -> bool:
     :param prefix: The prefix to upload to
     :return:
     """
-    check_path = pathlib.Path.cwd() / 'check.txt'
-    with check_path.open('w') as f:
-        f.write("testing s3 upload")
+    with tempfile.TemporaryDirectory() as temp_dir:
+        check_path = pathlib.Path(temp_dir) / 'check.txt'
+        with check_path.open('w') as f:
+            f.write("testing s3 upload")
 
-    try:
-        num_uploaded = await upload_files_to_s3(bucket, check_path.parent, prefix, ['.txt'])
-        if num_uploaded == 1:
-            return True
-    except Exception:
-        return False
-    finally:
-        check_path.unlink()
+        try:
+            num_uploaded = await upload_files_to_s3(bucket, check_path.parent, prefix, ['.txt'])
+            if num_uploaded == 1:
+                return True
+        except Exception:
+            return False
+        finally:
+            check_path.unlink()
 
     return False
+
 
 def download_video(url: str, save_path: pathlib.Path) -> bool:
     """
