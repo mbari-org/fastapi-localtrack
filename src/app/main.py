@@ -30,7 +30,13 @@ from app.utils.misc import check_video_availability, list_by_suffix
 if not os.getenv('MINIO_ENDPOINT_URL') or not os.getenv('MINIO_ACCESS_KEY') or not os.getenv('MINIO_SECRET_KEY'):
     info(f"MINIO_ENDPOINT_URL, MINIO_ACCESS_KEY, and MINIO_SECRET_KEY environment variables must be set")
 
-app = FastAPI()
+app = FastAPI(
+    title="LocalTrack ML API",
+    description=f"""Runs video detection and tracking algorithms on underwater video. 
+                    Predicts (bounding box) localizations using YOLOv5 models, forwards to notification service, then uploads results to minio S3.""",
+    version=__version__
+)
+
 
 shutdown_flag = False
 
