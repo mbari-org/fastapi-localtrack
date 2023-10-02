@@ -69,13 +69,21 @@ Retrieve status for a give job by its id.
 
 ```json
 {
-  video: "http://some.hostname.com/path/to/video.mp4"
-  model: "mbari-315k",
-  /* Optional arguments to pass to the model */
-  args: " --conf-thres=0.01 --iou-thres=0.4 --max-det=100 ", 
-  metadata: {
-    /* Can be any json */
-    /* It should be passed through to the response when the model run has completed */
-  }
+  "status": "SUCCESS",
+  "last_updated": "2023-10-02 20:41:15.546944",
+  "created_at": "2023-10-02 20:40:43",
+  "name": "MegadetectorTest.pt V4361_20211006T162656Z_h265_10frame ernie running",
+  "job_id": 19,
+  "video": "http://localhost:8090/video/V4361_20211006T162656Z_h265_10frame.mp4",
+  "args": "--conf-thres=0.01 --iou-thres=0.4 --max-det=100 --agnostic-nms --imgsz 640",
+  "model": "s3://localtrack/models/MegadetectorTest.pt",
+  "metadata": {},
+  "processing_time_secs": 17.380639,
+  "num_tracks": 2,
+  "s3_path": "s3://localtrack/tracks/20231002T204058Z/output/output/V4361_20211006T162656Z_h265_10frame.tracks.tar.gz"
 }
 ```
+
+### 404
+
+Job not found

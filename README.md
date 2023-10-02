@@ -31,7 +31,7 @@ cd fastapi-localtrack
 
 ```shell
 ./bin/docker_build.sh
-./bin/docker_run.sh
+./bin/run_prod.sh
 ```
 
 Your server is now running at `http://localhost:3000/docs`
@@ -68,6 +68,31 @@ Check the status of all jobs at `http://localhost:3000/status`
 }
 ```
 
+### Process a video
+
+```shell
+curl -X 'POST' \
+  'http://localhost:8001/predict' \
+  -H 'accept: application/json' \
+  -H 'Content-Type: application/json' \
+  -d '{
+  "model": "MegadetectorTest.pt",
+  "video": "http://localhost:8090/video/V4361_20211006T162656Z_h265_10frame.mp4",
+  "metadata": {},
+  "args": "--conf-thres=0.01 --iou-thres=0.4 --max-det=100 --agnostic-nms --imgsz 640"
+}'
+```
+
+This should return a job id which can be used to retrieve the results or inspect the status
+```json
+{
+  "message": "http://localhost:8090/video/V4361_20211006T162656Z_h265_10frame.mp4 queued for processing",
+  "job_id": 22,
+  "job_name": "MegadetectorTest.pt V4361_20211006T162656Z_h265_10frame hawthorne jumping"
+}
+```
+
+
 ### Model weights
 
 YOLOv5 model weights in .pt files or contained in a tar.gz file as packaged in the 
@@ -79,7 +104,7 @@ it is used to create a key that is used for training the model.
 
 [minio](https://min.io/) is an open source S3 compatible object store.  It is used to store models, track configuration files 
 and track results from processing video.  It needs to be running to use the API and is started automatically when 
-you run the [./bin/docker_run.sh](./bin/docker_run.sh).
+you run the [./bin/run_prod.sh](./bin/docker_run.sh).
 
 ### Authentication
 

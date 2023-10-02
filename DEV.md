@@ -9,7 +9,7 @@ conda env create
  
 This will start an NGINX server, FastAPI server on port 8000, and
 run the daemon for processing.  Adding the `build` argument will
-rebuild the docker images and
+rebuild the docker images, then start the servers.
 
 Open the browser to http://localhost:8000/docs to see the API documentation.
  
@@ -18,12 +18,14 @@ Open the browser to http://localhost:8000/docs to see the API documentation.
 Run the pytest tests from the root directory with:
 
 ```shell
-pytest
+conda activate fastapi-localtrack
+./bin/run_daemon.sh
+./bin/run_tests.sh
 ```
 
 You should see output like:
 
-```shell
+```shell    
 
 =========================================================================================== test session starts ===========================================================================================
 platform darwin -- Python 3.11.5, pytest-7.4.2, pluggy-1.3.0
