@@ -67,7 +67,8 @@ async def upload_files_to_s3(bucket: str, local_path: str, s3_path: str, suffixe
             err(f"Could not find {local_path}")
             return 0
 
-        for obj in pathlib.Path(local_path).iterdir():
+        # Recursively glob all files in the local path
+        for obj in pathlib.Path(local_path).rglob('*'):
             if obj.is_file():
                 for s in suffixes:
                     if obj.suffix == s:
