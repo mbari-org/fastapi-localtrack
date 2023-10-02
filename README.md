@@ -3,6 +3,10 @@
 
 **fastapi-localtrack** code is a lightweight API to process video. It uses the Python web framework [FastAPI](https://fastapi.tiangolo.com/).
  
+-  New videos queued to process are handled by a daemon that scans for new videos every 15 seconds
+-  New models are scanned for every minute and uploaded to minio where they are available for processing
+-  Currently only YOLOv5 models are supported
+
 # Requirements
 
 For deployment, you will need:
@@ -14,9 +18,10 @@ For development, you will need:
 - [Anaconda](https://www.anaconda.com/)
  
 # TODO
+ 
+- [ ] Wire in daemon and pytest to github actions
+- [ ] Standardize .names convention for local and cloud to be the same
 
-- [ ] Update documentation to reflect additional endpoints and return of job_id in metadata
-- [ ] Wire in daemon to github actions
 
 # Deployment
 
@@ -97,7 +102,7 @@ This should return a job id which can be used to retrieve the results or inspect
 
 YOLOv5 model weights in .pt files or contained in a tar.gz file as packaged in the 
 [deepsea-ai train](http://docs.mbari.org/deepsea-ai/commands/train/) command are currently supported.
-The assumption is that each are .pt or .tar.gz file is unique as 
+The assumption is that each .pt or .tar.gz file is unique as 
 it is used to create a key that is used for training the model.
 
 ### Minio
@@ -108,7 +113,9 @@ you run the [./bin/run_prod.sh](./bin/docker_run.sh).
 
 ### Authentication
 
-The credentials can be changed in the  .env file. See [.env](.env) for details.
+The credentials can be changed in the .env file. See [.env](.env) for details.
  
-To setup the receiving notification service add the NOTIFY_URL to the .env file. 
+### Notification
+
+To setup the receiving notification service add the NOTIFY_URL to the [.env](.env) file. 
 The results will be available in the minio server if the notification service goes down.
