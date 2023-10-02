@@ -7,7 +7,7 @@ import boto3
 import pathlib
 import tempfile
 import requests
-from botocore.exceptions import NoCredentialsError
+from botocore.exceptions import NoCredentialsError, ClientError
 from .logger import debug, info, err, exception
 
 
@@ -23,9 +23,16 @@ async def upload_file(obj, bucket, s3_path) -> bool:
         )
         # First check if the file exists in the bucket
         try:
+            debug(f'Checking if file {s3_path} exists in s3://{bucket}')
             s3.head_object(Bucket=bucket, Key=s3_path)
             info(f'File {s3_path} already exists in s3://{bucket}')
             return True
+        except ClientError as e:
+            if e.response['Error']['Code'] == "404":
+                debug(f'File {s3_path} does not exist in s3://{bucket}')
+            else:
+                exception(f'Error checking if file exists: {e}')
+                pass
         except Exception as ex:
             exception(f'Error checking if file exists: {ex}')
             pass

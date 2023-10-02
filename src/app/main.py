@@ -74,6 +74,8 @@ def fetch_models():
     else:
         default_model = None
 
+
+if default_video_url:
     if not check_video_availability(default_video_url):
         default_video_url = None
 

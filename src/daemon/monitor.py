@@ -44,7 +44,7 @@ class DockerMonitor(Monitor):
             self._track_prefix = os.environ.get('TRACK_PREFIX')
         else:
             self._track_prefix = minio.get("track_prefix")
-        self._s3_strongsort_track_config = minio.get("strongsort_track_config")
+        self._s3_strongsort_track_config = options.get("strongsort_track_config")
         DockerClient.startup(self._database_path)
         super().__init__(check_every=options.get("check_every"))
 

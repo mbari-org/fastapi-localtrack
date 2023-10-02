@@ -25,10 +25,12 @@ services:
   nginx:
     image: mbari/nginx
     container_name: dev-nginx
+    env_file:
+      - ./.env.dev
     ports:
       - "8090:80"
     volumes:
-      - ${DATA_DIR}/nginx:/data:ro
+      - ${HOME}/fastapi_localtrack_dev/nginx:/data:rw
 ###################################################################
 #  Setup Minio
 ###################################################################

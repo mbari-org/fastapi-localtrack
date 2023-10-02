@@ -66,10 +66,10 @@ class DockerRunner:
         if self.in_path.exists():
             shutil.rmtree(self.in_path.as_posix())
 
-        # Clean up the output directory
-        debug(f'Removing {self.out_path.as_posix()}')
-        if self.out_path.exists():
-            shutil.rmtree(self.out_path.as_posix())
+        # # Clean up the output directory
+        # debug(f'Removing {self.out_path.as_posix()}')
+        # if self.out_path.exists():
+        #     shutil.rmtree(self.out_path.as_posix())
 
     async def run(self):
         """
@@ -78,8 +78,8 @@ class DockerRunner:
         """
         info(f'Processing {self.video_url} with {self.model_s3} and {self.track_s3} to {self.output_s3}')
 
-        # Download the video at the self.video_url to the self.in_path
-        if await asyncio.to_thread(download_video(self.video_url, self.in_path)):
+        info(f'Downloading {self.video_url} to {self.in_path}')
+        if download_video(self.video_url, self.in_path):
             info(f'Video {self.video_url} downloaded to {self.in_path}')
         else:
             err(f'Failed to download {self.video_url} to {self.in_path.as_posix()}.'
@@ -231,6 +231,7 @@ async def main():
 
         # Create a docker runner and run it
         p = DockerRunner(job_id=job_id,
+                         track_s3=config['defaults']['track_s3'],
                          output_s3=output_s3,
                          video_url='http://localhost:8090/video/V4361_20211006T163856Z_h265_10frame.mp4',
                          model_s3='s3://m3-video-processing/models/yolov5x_mbay_benthic_model.tar.gz',
