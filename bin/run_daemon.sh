@@ -52,12 +52,8 @@ done
 
 echo "Nginx server running at http://localhost:8090"
 echo "Minio server running at http://localhost:7000"
-echo "FastAPI server running at http://localhost:8001"
-echo "FastAPI docs running at http://localhost:8001/docs"
 
 ### Run the daemon and the api server
 export PYTHONPATH=$BASE_DIR/src:$BASE_DIR/tests
 pkill -f "python -m daemon"
-pkill -f "uvicorn main:app"
-cd $BASE_DIR/src && python -m daemon &
-cd $BASE_DIR/src/app && uvicorn main:app --port 8001 --reload
+cd $BASE_DIR/src && python -m daemon
