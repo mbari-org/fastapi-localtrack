@@ -43,7 +43,9 @@ services:
       - NOTIFY_URL=${NOTIFY_URL}
       - MODEL_DIR=/models
       - DATABASE_DIR=/sqlite_data
+      - AWS_PROFILE=${AWS_PROFILE:-default}
     volumes:
+      - ${HOME}/.aws/credentials:/root/.aws/credentials:ro
       - ${DATA_DIR}/sqlite_data:/sqlite_data
       - ${DATA_DIR}/models:/models
     networks:
