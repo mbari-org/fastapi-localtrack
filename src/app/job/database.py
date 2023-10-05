@@ -78,7 +78,7 @@ def update_media(db: Session, job: Job, video_name: str, status: str, metadata_b
     :param status: The status of the video
     :param metadata_b64: The metadata to pass to the job
     """
-    info(f'Updating media {video_name} to {status}')
+    info(f'Updating media {video_name} in job {job.id} {job.name} to {status}')
 
     media = [m for m in job.media if m.name == video_name]
 
@@ -95,7 +95,7 @@ def update_media(db: Session, job: Job, video_name: str, status: str, metadata_b
             media.metadata_b64 = metadata_b64
 
     else:
-        info(f'A new media {video_name} was added to job {job.name}')
+        info(f'A new media {video_name} was added to job {job.id} {job.name}')
         new_media = Media(name=video_name,
                           status=status,
                           job=job,

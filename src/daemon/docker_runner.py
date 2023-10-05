@@ -41,36 +41,37 @@ class DockerRunner:
         :param track_s3:: location of the track configuration in s3
         :param args: optional arguments to pass to the track command
         """
-        self.image_name = image_name
-        self.track_s3 = track_s3
-        self.container = None
-        self.total_time = None
-        self.args = args
-        self.video_url = video_url
-        self.model_s3 = model_s3
-        self.output_s3 = output_s3
-        self.temp_path = Path('/tmp')
-        self.in_path = self.temp_path / str(job_id) / 'input'
-        self.out_path = self.temp_path / str(job_id) / 'output'
-        self.in_path.mkdir(parents=True, exist_ok=True)
-        self.out_path.mkdir(parents=True, exist_ok=True)
+        self._container_name = f'{DEFAULT_CONTAINER_NAME}-{datetime.utcnow().strftime("%Y%m%d%H%M%S")}'
+        self._image_name = image_name
+        self._track_s3 = track_s3
+        self._total_time = None
+        self._args = args
+        self._is_successful = False
+        self._is_complete = False
+        self._video_url = video_url
+        self._model_s3 = model_s3
+        self._output_s3 = output_s3
+        self._temp_path = Path('/tmp')
+        self._in_path = self._temp_path / str(job_id) / 'input'
+        self._out_path = self._temp_path / str(job_id) / 'output'
+        self._in_path.mkdir(parents=True, exist_ok=True)
+        self._out_path.mkdir(parents=True, exist_ok=True)
 
-    def __del__(self):
+    def clean(self):
         """
         Clean up the input/output directories
         :return:
         """
-        debug(f'Deleting {self.__class__.__name__} instance')
 
         # Clean up the input directory
-        debug(f'Removing {self.in_path.as_posix()}')
-        if self.in_path.exists():
-            shutil.rmtree(self.in_path.as_posix())
+        debug(f'Removing {self._in_path.as_posix()}')
+        if self._in_path.exists():
+            shutil.rmtree(self._in_path.as_posix())
 
         # Clean up the output directory
-        debug(f'Removing {self.out_path.as_posix()}')
-        if self.out_path.exists():
-            shutil.rmtree(self.out_path.as_posix())
+        debug(f'Removing {self._out_path.as_posix()}')
+        if self._out_path.exists():
+            shutil.rmtree(self._out_path.as_posix())
 
     async def run(self, has_gpu: bool = False):
         """
@@ -78,11 +79,11 @@ class DockerRunner:
         :param has_gpu: True if the docker container should use the nvidia runtime
         :return:
         """
-        info(f'Processing {self.video_url} with {self.model_s3} and {self.track_s3} to {self.output_s3}')
+        info(f'Processing {self._video_url} with {self._model_s3} and {self._track_s3} to {self._output_s3}')
 
-        info(f'Downloading {self.video_url} to {self.in_path}')
-        if not download_video(self.video_url, self.in_path):
-            err(f'Failed to download {self.video_url} to {self.in_path}.'
+        info(f'Downloading {self._video_url} to {self._in_path}')
+        if not download_video(self._video_url, self._in_path):
+            err(f'Failed to download {self._video_url} to {self._in_path}.'
                 f' Are you sure your nginx server is running?')
             return
 
@@ -92,28 +93,29 @@ class DockerRunner:
 
         # Setup the command to run to be AWS SageMaker compliant, /opt/ml/input, etc. These are the default,
         # but included here for clarity
-        command = [f"dettrack", "--model-s3", self.model_s3] + \
-                  ["--config-s3", self.track_s3] + \
-                  ["-i", f"{self.in_path}"] + \
-                  ["-o", f"{self.out_path}"]
+        command = [f"dettrack", "--model-s3", self._model_s3] + \
+                  ["--config-s3", self._track_s3] + \
+                  ["-i", f"{self._in_path}"] + \
+                  ["-o", f"{self._out_path}"]
 
         # Add the optional arguments if they exist. If these are missing, defaults are included in the Docker container
-        if self.args:
-            command += ["--args", f"{self.args}"]
+        if self._args:
+            command += ["--args", f"{self._args}"]
 
         info(f'Using command {command}')
 
         # Run the docker container asynchronously and wait for it to finish
         start_utc = datetime.utcnow()
-        await self.wait_for_container(has_gpu, self.image_name, command, self.temp_path, self.out_path)
+        await self.wait_for_container(has_gpu, self._image_name, self._container_name, command, self._temp_path,
+                                      self._out_path)
         info(f'Using command {command}')
-        self.total_time = datetime.utcnow() - start_utc
+        self._total_time = datetime.utcnow() - start_utc
 
         # Upload the results to s3
-        p = urlparse(self.output_s3)
+        p = urlparse(self._output_s3)
         await upload_files_to_s3(bucket=p.netloc,
                                  s3_path=p.path.lstrip('/'),
-                                 local_path=self.out_path.as_posix(),
+                                 local_path=self._out_path.as_posix(),
                                  suffixes=['.gz', '.json', ".mp4", ".txt"])
 
     def get_num_tracks(self):
@@ -123,7 +125,7 @@ class DockerRunner:
         :return: The number of tracks in the output directory
         """
         unique_track_ids = set()
-        for tar_file in self.out_path.glob('*.tar.gz'):
+        for tar_file in self._out_path.glob('*.tar.gz'):
             with tarfile.open(tar_file.as_posix(), "r:gz") as tar:
                 for member in tar.getmembers():
                     if member.name.endswith('.json') and 'processing' not in member.name:
@@ -133,43 +135,72 @@ class DockerRunner:
                             unique_track_ids.add(v[1]['track_uuid'])
         return len(unique_track_ids)
 
-    def get_id(self):
-        """
-        Get the container id
-        :return: The container id if it exists, None otherwise
-        """
-        if self.container:
-            return self.container.id
-        else:
-            return None
-
     def get_results(self):
         """
         Get the results from processing
         :return: The s3 location and local path of the results if they exist, None otherwise, the number of tracks,
         and the total time
         """
-        if len(list(self.out_path.glob('*.tar.gz'))) > 0:
-            track_path = Path(list(self.out_path.glob('*.tar.gz'))[0])
-            s3_loc = f'{self.output_s3}/output/{track_path.name}'
-            return s3_loc, track_path, self.get_num_tracks(), self.total_time.total_seconds()
+        if len(list(self._out_path.glob('*.tar.gz'))) > 0:
+            track_path = Path(list(self._out_path.glob('*.tar.gz'))[0])
+            s3_loc = f'{self._output_s3}/output/{track_path.name}'
+            return s3_loc, track_path, self.get_num_tracks(), self._total_time.total_seconds()
 
         return None, None, None, None
+
+    def get_log_path(self) -> Path:
+        """
+        Get the log from processing
+        :return: Path to the log file
+        """
+        return self._out_path / 'logs.txt'
 
     def is_successful(self):
         """
         Check if the container has successfully completed
         :return: True if a .tar.gz was created, False otherwise
         """
+        return self._is_successful
 
-        # Complete if the output directory has a tar.gz file in it
-        if len(list(self.out_path.glob('*.tar.gz'))) > 0:
-            return True
+    def is_complete(self):
+        """
+        Check if the processing has completed
+        :return:
+        """
+        return self._is_complete
+
+    async def is_running(self):
+        """
+        Check if the container is running
+        :return: True is the docker container is running, False otherwise
+        """
+        if self._container_name:
+            async with Docker() as docker_aoi:
+                try:
+                    container = await docker_aoi.containers.get(self._container_name)
+                    return container.status == 'running'
+                except DockerError:
+                    return False
         else:
             return False
 
-    @staticmethod
-    async def wait_for_container(has_gpu: bool, image_name: str, command: [str], temp_path: Path, output_path: Path):
+    async def is_created(self):
+        """
+        Check if the container is created
+        :return: True is the docker container is created, False otherwise
+        """
+        if self._container_name:
+            async with Docker() as docker_aoi:
+                try:
+                    container = await docker_aoi.containers.get(self._container_name)
+                    return container.status == 'created'
+                except DockerError:
+                    return False
+        else:
+            return False
+
+    async def wait_for_container(self, has_gpu: bool, image_name: str, container_name: str, command: [str], temp_path: Path,
+                                 output_path: Path):
         async with Docker() as docker_aoi:
             try:
                 await docker_aoi.images.inspect(image_name)
@@ -181,7 +212,6 @@ class DockerRunner:
                     raise DockerError(e.status, f'Error retrieving {image_name} image.')
 
             try:
-                container_name = f'{DEFAULT_CONTAINER_NAME}-{datetime.now().strftime("%Y%m%d%H%M%S")}'
 
                 # If the volume mount fastapi-localtrack_scratch exists, bind it to the temp directory -
                 # this is pass through from the parent docker container in production
@@ -196,7 +226,7 @@ class DockerRunner:
                 debug(f"AWS_DEFAULT_REGION={os.environ.get('AWS_DEFAULT_REGION', 'us-west-2')}")
                 debug(f"AWS_ACCESS_KEY_ID={os.environ.get('MINIO_ACCESS_KEY', 'localtrack')[0:5]}**")
                 debug(f"AWS_SECRET_ACCESS_KEY={os.environ.get('MINIO_SECRET_KEY', 'ReplaceMePassword')[0:5]}**")
-                debug(f"AWS_ENDPOINT_URL={os.environ.get('MINIO_ENDPOINT_URL', 'http://localhost:9000')}")
+                debug(f"AWS_ENDPOINT_URL={os.environ.get('MINIO_ENDPOINT_URL', 'http://localhost:7000')}")
 
                 # Create the configuration for the docker container
                 config = {
@@ -209,7 +239,7 @@ class DockerRunner:
                         f"AWS_DEFAULT_REGION={os.environ.get('AWS_DEFAULT_REGION', 'us-west-2')}",
                         f"AWS_ACCESS_KEY_ID={os.environ.get('MINIO_ACCESS_KEY', 'localtrack')}",
                         f"AWS_SECRET_ACCESS_KEY={os.environ.get('MINIO_SECRET_KEY', 'ReplaceMePassword')}",
-                        f"AWS_ENDPOINT_URL={os.environ.get('MINIO_EXTERNAL_ENDPOINT_URL', 'http://localhost:9000')}"
+                        f"AWS_ENDPOINT_URL={os.environ.get('MINIO_EXTERNAL_ENDPOINT_URL', 'http://localhost:7000')}"
                     ],
                     'Cmd': command,
                     'AttachStdin': True,
@@ -244,7 +274,12 @@ class DockerRunner:
                     logs = await container.log(stdout=True, stderr=True)
                     f.write('\n'.join(logs))
 
+                # Complete if the output directory has a tar.gz file in it
+                if len(list(self._out_path.glob('*.tar.gz'))) > 0:
+                    self._is_successful = True
+
                 await container.delete(force=True)
+                self._is_complete = True
             except Exception as e:
                 raise e
 

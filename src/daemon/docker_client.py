@@ -22,6 +22,61 @@ DEFAULT_ARGS = '--iou-thres 0.5 --conf-thres 0.01 --agnostic-nms --max-det 100'
 
 class DockerClient:
 
+    def __init__(self) -> None:
+        info('Initializing DockerClient')
+        self._instances = {}
+
+    async def check(self, database_path: Path) -> None:
+        """
+        Check the status of any running jobs
+        :param database_path:
+        :return:
+        """
+
+        session_maker = init_db(database_path, reset=False)
+
+        jobs_to_remove = []
+        for job_id, instance in self._instances.items():
+
+            if instance.is_complete():
+                info(f'Job {job_id} processing complete: {instance.is_successful()}')
+
+                # Update the job status and notify
+                with session_maker.begin() as db:
+                    job = db.query(JobLocal).filter(JobLocal.id == job_id).first()
+                    if instance.is_successful():
+                        if job.media[0].metadata_b64:
+                            metadata = json_b64_decode(job.media[0].metadata_b64)
+                        else:
+                            metadata = {}
+
+                        update_media(db, job, job.media[0].name, Status.SUCCESS)
+                        jobs_to_remove.append(job_id)
+
+                        job.results, local_path, num_tracks, processing_time_secs = instance.get_results()
+
+                        metadata['s3_path'] = job.results
+                        metadata['num_tracks'] = num_tracks
+                        metadata['processing_time_secs'] = processing_time_secs
+
+                        update_media(db, job,
+                                     job.media[0].name,
+                                     Status.SUCCESS,
+                                     metadata_b64=json_b64_encode(metadata))
+
+                        await notify(job, local_path)
+
+                    else:
+                        update_media(db, job, job.media[0].name, Status.FAILED)
+                        jobs_to_remove.append(job_id)
+                        await notify(job, None)
+
+        # Remove the instances
+        for job_id in jobs_to_remove:
+            if job_id in self._instances:
+                info(f'Removing instance for job {job_id}')
+                del self._instances[job_id]
+
     async def process(self,
                       num_gpus: int,
                       database_path: Path,
@@ -30,11 +85,16 @@ class DockerClient:
                       s3_track_config: str) -> ClientResponse:
         """
         Process any jobs that are queued. This function is called by the daemon module
+        :param num_gpus: The number of GPUs available
+        :param database_path: The path to the database
+        :param root_bucket: The root bucket for the track tar files
+        :param track_prefix: The prefix for the track tar files
+        :param s3_track_config: The s3 track config
         """
         # Two files per GPU
         if num_gpus > 0:
             has_gpu = True
-            max_concurrent_jobs = num_gpus*2
+            max_concurrent_jobs = num_gpus * 2
         else:
             has_gpu = False
             max_concurrent_jobs = 2
@@ -85,37 +145,14 @@ class DockerClient:
                     job = db.query(JobLocal).filter(JobLocal.id == job_data.id).first()
                     update_media(db, job, job.media[0].name, Status.RUNNING)
 
+                self._instances[job_data.id] = instance
+
                 # Process the video asynchronously
                 asyncio.run_coroutine_threadsafe(instance.run(has_gpu), asyncio.get_event_loop())
-                info(f'Processing complete: {instance.is_successful()}')
-
-                # Update the job status and notify
-                with session_maker.begin() as db:
-                    job = db.query(JobLocal).filter(JobLocal.id == job_data.id).first()
-                    if instance.is_successful():
-                        if job.media[0].metadata_b64:
-                            metadata = json_b64_decode(job.media[0].metadata_b64)
-                        else:
-                            metadata = {}
-
-                        update_media(db, job, job.media[0].name, Status.SUCCESS)
-
-                        job.results, local_path, num_tracks, processing_time_secs = instance.get_results()
-
-                        metadata['s3_path'] = job.results
-                        metadata['num_tracks'] = num_tracks
-                        metadata['processing_time_secs'] = processing_time_secs
-
-                        update_media(db, job,
-                                     job.media[0].name,
-                                     Status.SUCCESS,
-                                     metadata_b64=json_b64_encode(metadata))
-
-                        await notify(job, local_path)
-
-                    else:
-                        update_media(db, job, job.media[0].name, Status.FAILED)
-                        await notify(job, None)
+            else:
+                err(f'No job found with id {job_id}')
+        else:
+            info(f'Already running {len(all_containers)} jobs. Waiting for one to finish')
 
     @staticmethod
     def startup(database_path: Path) -> None:
@@ -157,7 +194,8 @@ class DockerClient:
         # Get all active docker containers
         all_containers = client.containers.list()
         # Prune to only those that start with the default container name
-        all_containers = [container for container in all_containers if container.name.startswith(DEFAULT_CONTAINER_NAME)]
+        all_containers = [container for container in all_containers if
+                          container.name.startswith(DEFAULT_CONTAINER_NAME)]
 
         if len(all_containers) > 0:
             # Should never get here unless something went wrong

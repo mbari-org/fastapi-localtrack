@@ -69,6 +69,7 @@ class DockerMonitor(Monitor):
                 track_prefix=self._track_prefix,
                 s3_track_config=self._s3_strongsort_track_config
             )
+            await self._client.check(database_path=self._database_path)
         except Exception as e:
             exception(f'Error processing docker jobs: {e}')
 
