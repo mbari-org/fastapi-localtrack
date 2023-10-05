@@ -16,11 +16,13 @@ For deployment, you will need:
 For development, you will need:
 - [Python >=3.10](https://www.python.org/downloads/)
 - [Anaconda](https://www.anaconda.com/)
+- [Docker](https://docs.docker.com/get-docker/)
+- [Docker Compose](https://docs.docker.com/compose/install/)
  
 # TODO
  
 - [ ] Wire in daemon and pytest to github actions
-- [ ] Standardize .names convention for local and cloud to be the same
+- [ ] Standardize .names convention for local and cloud 
 
 
 # Deployment
@@ -39,7 +41,7 @@ cd fastapi-localtrack
 ./bin/run_prod.sh
 ```
 
-Your server is now running at `http://localhost:3000/docs`
+Your server is now running at `http://localhost:8000/docs`
 
 Data is stored in the minio server at `http://localhost:9000`
 
@@ -49,17 +51,17 @@ You can access the minio server at http://localhost:9000.  The default credentia
 
 ## Try it out
 
-Open the browser to http://localhost:3000/docs to see the API documentation.
+Open the browser to http://localhost:8000/docs to see the API documentation.
 
 ### Health Check
-Check the health of the server by going to `http://localhost:3000/health`.  You should see the following response:
+Check the health of the server by going to `http://localhost:8000/health`.  You should see the following response:
 
 ```json
 {"status":"ok"}
 ```
 
 ### See all jobs
-Check the status of all jobs at `http://localhost:3000/status`
+Check the status of all jobs at `http://localhost:8000/status`
 
 ```json
 {
@@ -77,7 +79,7 @@ Check the status of all jobs at `http://localhost:3000/status`
 
 ```shell
 curl -X 'POST' \
-  'http://localhost:8001/predict' \
+  'http://localhost:8000/predict' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -d '{
