@@ -53,12 +53,15 @@ def init_db(db_path: Path, reset: bool = False) -> sessionmaker:
     # Create the output path to store the database if it doesn't exist
     db_path.mkdir(parents=True, exist_ok=True)
 
-    # Name the database based on the account number to avoid collisions
     db = db_path / f'sqlite_job_cache_docker.db'
     info(f"Initializing job cache database in {db_path} as {db}")
     engine = create_engine(f"sqlite:///{db.as_posix()}", connect_args={"check_same_thread": False}, echo=False)
 
     Base.metadata.create_all(engine, tables=[JobLocal.__table__, MediaLocal.__table__])
+
+    # If the database is missing, create it
+    if not db.exists():
+        reset = True
 
     if reset:
         # Clear the database
