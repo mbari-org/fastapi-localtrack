@@ -28,29 +28,43 @@ services:
   fastapi:
     image: mbari/fastapi-localtrack:${GIT_VERSION}
     container_name: fastapi-localtrack
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8000/health"]
     env_file:
       - ./.env
+    environment:
+      - DATABASE_DIR=/sqlite_data
     ports:
       - "8000:80"
+    volumes:
+      - ./config.yml:/app/config.yml
+      - ${DATA_DIR}/sqlite_data:/sqlite_data
     networks:
       - minio-net
+    restart: always
   daemon:
     image: mbari/fastapi-localtrack-daemon:${GIT_VERSION}
     container_name: fastapi-localtrack-daemon
+    depends_on:
+      - fastapi
     env_file:
       - ./.env
     environment:
       - NOTIFY_URL=${NOTIFY_URL}
       - MODEL_DIR=/models
       - DATABASE_DIR=/sqlite_data
-      - AWS_PROFILE=${AWS_PROFILE:-default}
+      - NUM_GPUS=1
     volumes:
-      - ${HOME}/.aws/credentials:/root/.aws/credentials:ro
+      - ./config.yml:/app/config.yml
+      - /var/run/docker.sock:/var/run/docker.sock
+      - scratch:/tmp
       - ${DATA_DIR}/sqlite_data:/sqlite_data
-      - ${DATA_DIR}/models:/models
+      - ${CRED_DIR}:/root/.aws
+      - ${MODEL_DIR}:/models
     networks:
       - minio-net
     restart: always
+    privileged: true
 ###################################################################
 #  Setup Minio
 ###################################################################
@@ -67,18 +81,22 @@ services:
       /bin/sh -c "
       mc alias set myminio http://minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY};
       mc mb --ignore-existing myminio/${ROOT_BUCKET_NAME}/${MODEL_PREFIX};
+      mc mb --ignore-existing myminio/${ROOT_BUCKET_NAME}/${MODEL_PREFIX}/track-config;
       mc mb --ignore-existing myminio/${ROOT_BUCKET_NAME}/${TRACK_PREFIX};
       mc admin user add myminio fastapi ${MINIO_LIVE_ACCESS_KEY};
       mc admin policy list myminio;
       mc admin policy attach myminio readwrite --user fastapi; 
       curl -O https://902005-public.s3.us-west-2.amazonaws.com/models/Megadetector/best.pt;
       curl -O https://902005-public.s3.us-west-2.amazonaws.com/models/track-config/strong_sort_benthic.yaml;
-      mc cp strong_sort_benthic.yaml ${ROOT_BUCKET_NAME}/${MODEL_PREFIX}/track-config/strong_sort_benthic.yaml;
+      mc cp strong_sort_benthic.yaml myminio/${ROOT_BUCKET_NAME}/${MODEL_PREFIX}/track-config/strong_sort_benthic.yaml;
       mc cp best.pt myminio/${ROOT_BUCKET_NAME}/${MODEL_PREFIX}/MegadetectorTest.pt;
-      exit 0;
+      exit ;
       "
     volumes:
       - ${DATA_DIR}/objects:/data
+
+volumes:
+    scratch:
 
 networks:
   minio-net:
