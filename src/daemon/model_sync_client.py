@@ -17,5 +17,4 @@ class ModelSyncClient:
             return True, num_uploaded
         except Exception as e:
             exception(f'Error uploading models: {e}')
-            asyncio.get_event_loop().stop()
             return False, 0

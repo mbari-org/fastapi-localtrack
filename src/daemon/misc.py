@@ -69,7 +69,7 @@ async def upload_files_to_s3(bucket: str, local_path: str, s3_path: str, suffixe
 
         # Recursively glob all files in the local path, excluding anything with 'yolov8' in the path
         for obj in pathlib.Path(local_path).rglob('*'):
-            if obj.is_file() and 'yolov8' not in obj.parts:
+            if obj.is_file() and 'yolov8' not in obj.name:
                 for s in suffixes:
                     if obj.suffix == s:
                         if await upload_file(obj, bucket, f'{s3_path}/{obj.name}'):

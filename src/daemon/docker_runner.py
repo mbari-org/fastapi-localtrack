@@ -12,14 +12,15 @@ import os
 import tarfile
 import shutil
 import json
-
 from urllib.parse import urlparse
 from pathlib import Path
+
 from daemon.misc import download_video, upload_files_to_s3
 
 from .logger import info, debug, err
 
-default_name = 'strongsort'
+DEFAULT_CONTAINER_NAME = 'strongsort'
+
 
 class DockerRunner:
 
@@ -48,9 +49,9 @@ class DockerRunner:
         self.video_url = video_url
         self.model_s3 = model_s3
         self.output_s3 = output_s3
-        temp_path = Path.cwd() / 'temp'
-        self.in_path = temp_path / str(job_id) / 'input'
-        self.out_path = temp_path / str(job_id) / 'output'
+        self.temp_path = Path('/tmp')
+        self.in_path = self.temp_path / str(job_id) / 'input'
+        self.out_path = self.temp_path / str(job_id) / 'output'
         self.in_path.mkdir(parents=True, exist_ok=True)
         self.out_path.mkdir(parents=True, exist_ok=True)
 
@@ -66,27 +67,26 @@ class DockerRunner:
         if self.in_path.exists():
             shutil.rmtree(self.in_path.as_posix())
 
-        # # Clean up the output directory
-        # debug(f'Removing {self.out_path.as_posix()}')
-        # if self.out_path.exists():
-        #     shutil.rmtree(self.out_path.as_posix())
+        # Clean up the output directory
+        debug(f'Removing {self.out_path.as_posix()}')
+        if self.out_path.exists():
+            shutil.rmtree(self.out_path.as_posix())
 
-    async def run(self):
+    async def run(self, has_gpu: bool = False):
         """
         Proces the video with a local docker runner. Results are uploaded to the output_s3 location
+        :param has_gpu: True if the docker container should use the nvidia runtime
         :return:
         """
         info(f'Processing {self.video_url} with {self.model_s3} and {self.track_s3} to {self.output_s3}')
 
         info(f'Downloading {self.video_url} to {self.in_path}')
-        if download_video(self.video_url, self.in_path):
-            info(f'Video {self.video_url} downloaded to {self.in_path}')
-        else:
-            err(f'Failed to download {self.video_url} to {self.in_path.as_posix()}.'
+        if not download_video(self.video_url, self.in_path):
+            err(f'Failed to download {self.video_url} to {self.in_path}.'
                 f' Are you sure your nginx server is running?')
             return
 
-        home = Path.home()
+        home = Path.home().as_posix()
         profile = os.environ.get('AWS_DEFAULT_PROFILE', 'default')
         info(f'Using credentials file in {home}/.aws and profile {profile}')
 
@@ -94,8 +94,8 @@ class DockerRunner:
         # but included here for clarity
         command = [f"dettrack", "--model-s3", self.model_s3] + \
                   ["--config-s3", self.track_s3] + \
-                  ["-i", "/opt/ml/processing/input"] + \
-                  ["-o", "/opt/ml/processing/output"]
+                  ["-i", f"{self.in_path}"] + \
+                  ["-o", f"{self.out_path}"]
 
         # Add the optional arguments if they exist. If these are missing, defaults are included in the Docker container
         if self.args:
@@ -105,15 +105,16 @@ class DockerRunner:
 
         # Run the docker container asynchronously and wait for it to finish
         start_utc = datetime.utcnow()
-        await self.wait_for_container(self.image_name, command, self.in_path, self.out_path)
+        await self.wait_for_container(has_gpu, self.image_name, command, self.temp_path, self.out_path)
+        info(f'Using command {command}')
         self.total_time = datetime.utcnow() - start_utc
 
         # Upload the results to s3
-        p = urlparse(self.output_s3)  # remove trailing slash
+        p = urlparse(self.output_s3)
         await upload_files_to_s3(bucket=p.netloc,
-                           s3_path=p.path.lstrip('/'),
-                           local_path=self.out_path.as_posix(),
-                           suffixes=['.gz', '.json', ".mp4"])
+                                 s3_path=p.path.lstrip('/'),
+                                 local_path=self.out_path.as_posix(),
+                                 suffixes=['.gz', '.json', ".mp4", ".txt"])
 
     def get_num_tracks(self):
         """
@@ -145,7 +146,8 @@ class DockerRunner:
     def get_results(self):
         """
         Get the results from processing
-        :return: The s3 location and local path of the results if they exist, None otherwise, the number of tracks, and the total time
+        :return: The s3 location and local path of the results if they exist, None otherwise, the number of tracks,
+        and the total time
         """
         if len(list(self.out_path.glob('*.tar.gz'))) > 0:
             track_path = Path(list(self.out_path.glob('*.tar.gz'))[0])
@@ -167,7 +169,7 @@ class DockerRunner:
             return False
 
     @staticmethod
-    async def wait_for_container(image_name: str, command: [str], in_path: Path, out_path: Path):
+    async def wait_for_container(has_gpu: bool, image_name: str, command: [str], temp_path: Path, output_path: Path):
         async with Docker() as docker_aoi:
             try:
                 await docker_aoi.images.inspect(image_name)
@@ -179,38 +181,68 @@ class DockerRunner:
                     raise DockerError(e.status, f'Error retrieving {image_name} image.')
 
             try:
+                container_name = f'{DEFAULT_CONTAINER_NAME}-{datetime.now().strftime("%Y%m%d%H%M%S")}'
+
+                # If the volume mount fastapi-localtrack_scratch exists, bind it to the temp directory -
+                # this is pass through from the parent docker container in production
+                binds = [f"{temp_path}:{temp_path}"]
+                volumes = await docker_aoi.volumes.list()
+                for v in volumes['Volumes']:
+                    if v['Name'] == 'fastapi-localtrack_scratch':
+                        binds = [f"fastapi-localtrack_scratch:{temp_path}"]
+                        break
+
+                debug(f"Using binds {binds}")
+                debug(f"AWS_DEFAULT_REGION={os.environ.get('AWS_DEFAULT_REGION', 'us-west-2')}")
+                debug(f"AWS_ACCESS_KEY_ID={os.environ.get('MINIO_ACCESS_KEY', 'localtrack')[0:5]}**")
+                debug(f"AWS_SECRET_ACCESS_KEY={os.environ.get('MINIO_SECRET_KEY', 'ReplaceMePassword')[0:5]}**")
+                debug(f"AWS_ENDPOINT_URL={os.environ.get('MINIO_ENDPOINT_URL', 'http://localhost:9000')}")
+
+                # Create the configuration for the docker container
+                config = {
+                    'Image': image_name,
+                    'HostConfig': {
+                        'NetworkMode': 'host',
+                        'Binds': binds,
+                    },
+                    'Env': [
+                        f"AWS_DEFAULT_REGION={os.environ.get('AWS_DEFAULT_REGION', 'us-west-2')}",
+                        f"AWS_ACCESS_KEY_ID={os.environ.get('MINIO_ACCESS_KEY', 'localtrack')}",
+                        f"AWS_SECRET_ACCESS_KEY={os.environ.get('MINIO_SECRET_KEY', 'ReplaceMePassword')}",
+                        f"AWS_ENDPOINT_URL={os.environ.get('MINIO_EXTERNAL_ENDPOINT_URL', 'http://localhost:9000')}"
+                    ],
+                    'Cmd': command,
+                    'AttachStdin': True,
+                    'AttachStdout': True,
+                    'AttachStderr': True,
+                    'Tty': False,
+                    'OpenStdin': True,
+                    'StdinOnce': True
+
+                }
+
+                # Check if the runtime nvidia is available, and if so, use it
+                if has_gpu:
+                    config['HostConfig']['Runtime'] = 'nvidia'
+                    info(f"NVIDIA runtime available")
+
                 # Run with network mode host to allow access to the local minio server
                 container = await docker_aoi.containers.create_or_replace(
-                    config={
-                        'Image': image_name,
-                        'HostConfig': {
-                            'NetworkMode': 'host',
-                            'Binds': [f"{Path.home()}/.aws:/root/.aws:ro",
-                                      f"{in_path}:/opt/ml/processing/input:ro",
-                                      f"{out_path}:/opt/ml/processing/output:rw"],
-                        },
-                        'Env': [
-                            f"AWS_DEFAULT_PROFILE={os.environ.get('AWS_DEFAULT_PROFILE', 'minio-localtrack')}",
-                        ],
-                        'Cmd': command,
-                        'AttachStdin': True,
-                        'AttachStdout': True,
-                        'AttachStderr': True,
-                        'Tty': False,
-                        'OpenStdin': True,
-                        'StdinOnce': True
-
-                    },
-                    name=default_name,
+                    config=config,
+                    name=container_name,
                 )
-                info(f'Running docker container {container.id} {default_name} with command {command}')
+                info(f'Running docker container {container.id} {container_name} with command {command}')
                 info(f'Waiting for container {container.id} to finish')
 
                 await container.start()
                 await container.wait()
 
-                logs = await container.log(stdout=True, stderr=True)
-                debug('\n'.join(logs))
+                # Redirect the logs to a file since they can be large
+                log_path = output_path / 'logs.txt'
+                info(f"Saving docker container {container.id} {container_name} log output to {log_path}")
+                with log_path.open('w') as f:
+                    logs = await container.log(stdout=True, stderr=True)
+                    f.write('\n'.join(logs))
 
                 await container.delete(force=True)
             except Exception as e:
@@ -227,14 +259,14 @@ async def main():
         config = yaml.safe_load(f)
         track_prefix = config['minio']['track_prefix']
         job_id = 1
-        output_s3 = f's3://m3-video-processing/{track_prefix}/test/{job_id}'
+        output_s3 = f's3://localtrack/{track_prefix}/test/{job_id}'
 
         # Create a docker runner and run it
         p = DockerRunner(job_id=job_id,
-                         track_s3=config['defaults']['track_s3'],
+                         track_s3=config['monitors']['docker']['strongsort_track_config'],
                          output_s3=output_s3,
-                         video_url='http://localhost:8090/video/V4361_20211006T163856Z_h265_10frame.mp4',
-                         model_s3='s3://m3-video-processing/models/yolov5x_mbay_benthic_model.tar.gz',
+                         video_url='http://localhost:8090/video/V4361_20211006T162656Z_h265_10frame.mp4',
+                         model_s3='s3://localtrack/models/yolov5x_mbay_benthic_model.tar.gz',
                          args='--iou-thres 0.5 --conf-thres 0.01 --agnostic-nms --max-det 100')
         await p.run()
 
@@ -246,6 +278,9 @@ async def main():
 
 if __name__ == '__main__':
     os.environ['AWS_DEFAULT_PROFILE'] = 'minio-localtrack'
+    os.environ['MINIO_ACCESS_KEY'] = 'localtrack'
+    os.environ['MINIO_ENDPOINT_URL'] = 'http://localhost:9000'
+    os.environ['MINIO_EXTERNAL_ENDPOINT_URL'] = 'http://localhost:9000'
     loop = asyncio.get_event_loop()
     loop.run_until_complete(main())
     loop.close()

@@ -1,7 +1,7 @@
 # fastapi-localtrack, Apache-2.0 license
 # Filename: daemon/docker_client.py
 # Description: Docker client that manages docker containers
-
+import asyncio
 import os
 from datetime import datetime
 from pathlib import Path
@@ -14,21 +14,30 @@ from deepsea_ai.database.job import Status, JobType
 from deepsea_ai.database.job.database_helper import json_b64_decode, json_b64_encode, get_status
 
 from app.job import MediaLocal, JobLocal, update_media, PydanticJobWithMedia2, init_db
-from daemon.logger import info, err, warn
-from daemon.docker_runner import DockerRunner
+from daemon.logger import info, err, warn, exception
+from daemon.docker_runner import DockerRunner, DEFAULT_CONTAINER_NAME
 
-DEFAULT_CONTAINER_NAME = 'strongsort'
 DEFAULT_ARGS = '--iou-thres 0.5 --conf-thres 0.01 --agnostic-nms --max-det 100'
 
 
 class DockerClient:
 
-    async def process(self, database_path: Path, root_bucket: str, track_prefix: str,
+    async def process(self,
+                      num_gpus: int,
+                      database_path: Path,
+                      root_bucket: str,
+                      track_prefix: str,
                       s3_track_config: str) -> ClientResponse:
         """
         Process any jobs that are queued. This function is called by the daemon module
         """
-        max_concurrent_jobs = 1
+        # Two files per GPU
+        if num_gpus > 0:
+            has_gpu = True
+            max_concurrent_jobs = num_gpus*2
+        else:
+            has_gpu = False
+            max_concurrent_jobs = 2
 
         session_maker = init_db(database_path, reset=False)
 
@@ -36,13 +45,10 @@ class DockerClient:
         with session_maker.begin() as db:
             media = db.query(MediaLocal).filter(MediaLocal.status == Status.QUEUED).first()
             if not media:
+                info(f'No video queued to process')
                 return
 
             job_id = media.job_id
-
-        if not job_id:
-            info(f'No jobs found')
-            return
 
         client = docker.from_env()
 
@@ -80,13 +86,13 @@ class DockerClient:
                     update_media(db, job, job.media[0].name, Status.RUNNING)
 
                 # Process the video asynchronously
-                await instance.run()
+                asyncio.run_coroutine_threadsafe(instance.run(has_gpu), asyncio.get_event_loop())
+                info(f'Processing complete: {instance.is_successful()}')
 
                 # Update the job status and notify
                 with session_maker.begin() as db:
                     job = db.query(JobLocal).filter(JobLocal.id == job_data.id).first()
                     if instance.is_successful():
-                        info(f'Processing complete: {instance.is_successful()}')
                         if job.media[0].metadata_b64:
                             metadata = json_b64_decode(job.media[0].metadata_b64)
                         else:
@@ -114,13 +120,15 @@ class DockerClient:
     @staticmethod
     def startup(database_path: Path) -> None:
         """
-        Startup logic to handle edge cases in Docker.
+        Startup logic to kill any dangling jobs and check for docker
         Check the database for any jobs that were running when the service was restarted and mark them as failed
         Kill any containers that are running
+        :param database_path: The path to the database
         :return:
         """
         session_maker = init_db(database_path, reset=False)
 
+        info(f'Checking for valid docker connection')
         client = docker.from_env()
 
         try:
@@ -147,15 +155,26 @@ class DockerClient:
                     job.media[0].status = Status.FAILED
 
         # Get all active docker containers
-        all_containers = client.containers.list(all=True, filters={'name': DEFAULT_CONTAINER_NAME})
+        all_containers = client.containers.list()
+        # Prune to only those that start with the default container name
+        all_containers = [container for container in all_containers if container.name.startswith(DEFAULT_CONTAINER_NAME)]
 
         if len(all_containers) > 0:
             # Should never get here unless something went wrong
             for container in all_containers:
                 err(
                     f'Container {container.id} was running but the service was restarted. Stopping and removing it')
-                container.stop()
-                container.remove()
+                # Stop the container
+                try:
+                    container = client.containers.get(container.id)
+                    if container.status == 'running':
+                        container.kill()
+                    container.stop()
+                    info(f"Container {container.id} stopped successfully.")
+                    container.remove()
+                    info(f"Container {container.id} removed successfully.")
+                except Exception as e:
+                    exception(e)
 
 
 async def notify(job: JobLocal, local_path: Path = None) -> None:
