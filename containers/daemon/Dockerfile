@@ -4,7 +4,7 @@
 FROM ubuntu:20.04
 LABEL vendor="MBARI"
 LABEL maintainer="Danelle Cline dcline@mbari.org"
-LABEL license="GPL"
+LABEL license="Apache License 2.0"
 
 ARG IMAGE_URI=mbari/fastapi-localtrack-daemon
 
@@ -33,19 +33,33 @@ ENV TIMEOUT="200"
 ## force stdin, stdout and stderr to be unbuffered to log
 ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1 PYTHONIOENCODING=UTF-8 LANG=C.UTF-8 LC_ALL=C.UTF-8
 
+ARG APP_DIR=/app
+WORKDIR $APP_DIR
+
 ## setup virtualenv
 RUN pip install virtualenv
-RUN virtualenv /env -p python3
-ENV VIRTUAL_ENV /env
-ENV PATH /env/bin:$PATH
+RUN virtualenv $APP_DIR/env -p python3
+ENV VIRTUAL_ENV $APP_DIR/env
+ENV PATH $APP_DIR/env/bin:$PATH 
 
-## install requirements
-ENV PYTHONPATH=/src
-WORKDIR /src/app
-COPY ./src/requirements.txt /src/requirements.txt
-COPY ./src /src
-COPY ./config.yml /config.yml
-RUN pip install --no-cache-dir --upgrade -r /src/requirements.txt
+# install requirements
+ENV PYTHONPATH=$APP_DIR/src
+WORKDIR $APP_DIR/src/app
+COPY ./src/requirements.txt $APP_DIR/src/requirements.txt
+COPY ./src $APP_DIR/src
+COPY ./config.yml $APP_DIR/config.yml
+RUN pip install --no-cache-dir --upgrade -r $APP_DIR/src/requirements.txt
+
+# set MBARI default docker user and group id
+#ARG DOCKER_GID=146
+#ARG DOCKER_UID=582
+
+# Add a non-root user
+#RUN groupadd -f -r --gid ${DOCKER_GID} docker && \
+#    useradd -r --uid ${DOCKER_UID} -g docker docker_user && \
+#    chown -R docker_user:docker $APP_DIR 
+
+#USER docker_user
 
 # run the daemon
 ENTRYPOINT ["python", "-m", "daemon"]

@@ -4,7 +4,7 @@
 FROM ubuntu:20.04
 LABEL vendor="MBARI"
 LABEL maintainer="Danelle Cline dcline@mbari.org"
-LABEL license="GPL"
+LABEL license="Apache License 2.0"
 
 ARG IMAGE_URI=mbari/fastapi-localtrack
 
@@ -25,19 +25,24 @@ RUN apt update -y && apt install -y software-properties-common && \
     && python3.10 -m pip install --upgrade pip==23.2.1 \
     && apt-get clean
 
+
+ARG APP_DIR=/app
+WORKDIR $APP_DIR
+
 ## setup virtualenv
 RUN pip install virtualenv
-RUN virtualenv /env -p python3
-ENV VIRTUAL_ENV /env
-ENV PATH /env/bin:$PATH
+RUN virtualenv $APP_DIR/env -p python3
+ENV VIRTUAL_ENV $APP_DIR/env
+ENV PATH $APP_DIR/env/bin:$PATH
 
-## install requirements and copy source
-ENV PYTHONPATH=/src
-WORKDIR /src/app
-COPY ./src/requirements.txt /src/requirements.txt
-COPY ./src/app /src/app
-COPY config.yml  /config.yml
-RUN pip install --no-cache-dir --upgrade -r /src/requirements.txt
+# install requirements and copy source
+ENV PYTHONPATH=$APP_DIR/src
+WORKDIR $APP_DIR/src/app
+COPY ./src/requirements.txt $APP_DIR/src/requirements.txt
+COPY ./src/app $APP_DIR/src/app
+COPY config.yml  $APP_DIR/config.yml
+RUN pip install --no-cache-dir --upgrade -r $APP_DIR/src/requirements.txt
+
 
 # run the FastAPI server
 EXPOSE 80
