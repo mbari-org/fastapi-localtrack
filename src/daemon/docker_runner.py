@@ -169,36 +169,6 @@ class DockerRunner:
         """
         return self._is_complete
 
-    async def is_running(self):
-        """
-        Check if the container is running
-        :return: True is the docker container is running, False otherwise
-        """
-        if self._container_name:
-            async with Docker() as docker_aoi:
-                try:
-                    container = await docker_aoi.containers.get(self._container_name)
-                    return container.status == 'running'
-                except DockerError:
-                    return False
-        else:
-            return False
-
-    async def is_created(self):
-        """
-        Check if the container is created
-        :return: True is the docker container is created, False otherwise
-        """
-        if self._container_name:
-            async with Docker() as docker_aoi:
-                try:
-                    container = await docker_aoi.containers.get(self._container_name)
-                    return container.status == 'created'
-                except DockerError:
-                    return False
-        else:
-            return False
-
     async def wait_for_container(self, has_gpu: bool, image_name: str, container_name: str, command: [str], temp_path: Path,
                                  output_path: Path):
         async with Docker() as docker_aoi:
