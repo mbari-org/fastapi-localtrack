@@ -5,9 +5,6 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd )"
 BASE_DIR="$(cd "$(dirname "${SCRIPT_DIR}/../.." )" && pwd )"
 
-# Build the docker images
-./bin/build_docker.sh
-
 # Export the environment variables in the .env.dev file
 export $(grep -v '^#' $BASE_DIR/.env |  xargs)
 
