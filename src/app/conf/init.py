@@ -32,9 +32,7 @@ with yaml_path.open('r') as yaml_file:
     else:
         engine = data['monitors']['docker']['strongsort_container']
 
-    database_path = Path(data['database']['path'])
-    if os.environ.get('DATABASE_DIR'):
-        database_path = Path(os.environ['DATABASE_DIR'])
+    database_path = Path(os.environ.get('DATABASE_DIR'))
 
 # A list of fun short names from sherman lagoon
 lagoon_names = [

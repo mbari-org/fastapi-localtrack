@@ -18,7 +18,7 @@ git_hash=$(git log -1 --format=%h)
 # Setup the dev network and run the development compose stack
 docker network inspect dev-minio-net >/dev/null 2>&1 || \
 docker network create dev-minio-net
-GIT_VERSION="${git_hash}" docker-compose -f compose.dev.yml up -d
+GIT_VERSION="${git_hash}" docker-compose --env-file .env.dev -f compose.dev.yml up -d
 
 # Wait for the nginx server to start
 echo "Wait for the nginx server to start"
@@ -30,9 +30,10 @@ done
 # Export the environment variables in the .env.dev file
 export $(grep -v '^#' $BASE_DIR/.env.dev |  xargs)
 
-# Replace ${HOME} with the actual home directory
+# Replace ${HOME} with the actual home directory and export needed variables
 DATA_DIR=${DATA_DIR/\$\{HOME\}/$HOME}
-export DATABASE_DIR=${DATA_DIR}/db
+export DATABASE_DIR=${DATA_DIR}/sqlite_data # Path to local database
+export MODEL_DIR=${DATA_DIR}/models # Path to local database
 
 echo "Fetch a few videos to serve in the default nginx/video directory"
 mkdir -p ${DATA_DIR}/nginx/video
@@ -50,14 +51,23 @@ do
   fi
 done
 
+# Fetch a model
+mkdir -p ${MODEL_DIR}
+if [ ! -f ${MODEL_DIR}/MegadetectorTest ]; then
+  curl -o ${MODEL_DIR}/MegadetectorTest https://902005-public.s3.us-west-2.amazonaws.com/models/Megadetector/best.pt
+fi
+
+username=$(grep MINIO_ACCESS_KEY .env.dev | cut -d '=' -f2)
+password=$(grep MINIO_SECRET_KEY .env.dev | cut -d '=' -f2)
+
 echo "Nginx server running at http://localhost:8090"
-echo "Minio server running at http://localhost:7000"
+echo "Minio server running at http://localhost:7000" username: $username password: $password
 echo "FastAPI server running at http://localhost:8001"
 echo "FastAPI docs running at http://localhost:8001/docs"
 
-### Run the daemon and the api server
-export PYTHONPATH=$BASE_DIR/src:$BASE_DIR/tests
+# Run the daemon and the api server
+export PYTHONPATH=$BASE_DIR/src
 pkill -f "python -m daemon"
 pkill -f "uvicorn main:app"
-cd $BASE_DIR/src && python -m daemon &
-cd $BASE_DIR/src/app && uvicorn main:app --port 8001 --reload
+cd $BASE_DIR/src && python -m daemon > daemon.log 2>&1 &
+cd $BASE_DIR/src/app && uvicorn main:app --port 8001 --reload > app.log 2>&1 &

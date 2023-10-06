@@ -9,6 +9,7 @@ import os
 import signal
 
 import pytest
+import yaml
 from sqlalchemy.orm import Session
 from deepsea_ai.database.job.database_helper import get_num_failed, get_num_completed, json_b64_decode, json_b64_encode, \
     get_status
@@ -30,8 +31,12 @@ fake_metadata = {
 @pytest.fixture
 def startup():
     global session_maker
-    # Reset the database
-    session_maker = init_db(Path.cwd() / 'db', reset=True)
+
+    # As defined in .env.dev
+    db_path = Path.home() / 'fastapi_localtrack_dev' / 'sqlite_data'
+
+    # Reset the database and add a job
+    session_maker = init_db(db_path, reset=True)
     name = "Dive 1377 with yolov5x-mbay-benthic"
     job = JobLocal(id=1,
                    engine="test docker runner id 1",
@@ -205,8 +210,7 @@ def add_vid3(db: Session = None):
     Helper function to add a new media to the database
     """
     job = db.query(JobLocal).first()  # Get the first job
-    vid1 = MediaLocal(id=3, name="vid3.mp4", status=Status.QUEUED, updatedAt=datetime.now(), job=job)
-    db.add(vid1)
+    db.add(MediaLocal(id=3, name="vid3.mp4", status=Status.QUEUED, updatedAt=datetime.now(), job=job))
 
 
 def test_add_one_media(startup):
@@ -219,8 +223,7 @@ def test_add_one_media(startup):
         num_media2 = len(job_p.media)
 
         job = db.query(JobLocal).first()  # Get the first job
-        vid1 = MediaLocal(id=3, name="vid3.mp4", status=Status.QUEUED, updatedAt=datetime.now(), job=job)
-        db.add(vid1)
+        db.add(MediaLocal(id=3, name="vid3.mp4", status=Status.QUEUED, updatedAt=datetime.now(), job=job))
 
         # Verify that the number of media2 has increased by 1
         job_updated = db.query(JobLocal).first()
@@ -235,8 +238,8 @@ def test_update_one_media(startup):
     with session_maker.begin() as db:
 
         job = db.query(JobLocal).first()  # Get the first job
-        vid1 = MediaLocal(id=3, name="vid3.mp4", status=Status.QUEUED, updatedAt=datetime.now(), job=job)
-        db.add(vid1)
+
+        db.add(MediaLocal(id=3, name="vid3.mp4", status=Status.QUEUED, updatedAt=datetime.now(), job=job))
 
         time.sleep(1)  # sleep for 1 second to ensure the timestamp is different
 

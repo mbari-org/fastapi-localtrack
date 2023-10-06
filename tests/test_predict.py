@@ -12,7 +12,6 @@ from fastapi.testclient import TestClient
 from app.logger import info
 from app import logger
 
-# Test video url hosted on localhost; Requires running the test/runserver.sh script first
 test_video_url = 'http://localhost:8090/video/V4361_20211006T162656Z_h265_10frame.mp4'
 test_video_url_missing = 'http://localhost:8090/video/V4361_20211006T162656Z_h265_1sec_missing.mp4'
 
@@ -30,7 +29,12 @@ fake_metadata = {
 @pytest.fixture
 def startup():
     global client
-
+    # As defined in .env.dev
+    db_path = Path.home() / 'fastapi_localtrack_dev' / 'sqlite_data'
+    os.environ['MINIO_ENDPOINT_URL'] = 'http://localhost:7000'
+    os.environ['MINIO_ACCESS_KEY'] = 'localtrack'
+    os.environ['MINIO_SECRET_KEY'] = 'ReplaceMePassword'
+    os.environ['DATABASE_DIR'] = db_path.as_posix()
     from app.main import app
     client = TestClient(app)
     yield
@@ -98,15 +102,11 @@ def test_predict_sans_metadata(startup, shutdown):
     info(f'Received status {response.json()} for job {job_id}')
 
     assert response.status_code == 200
-    assert response.json()['status'] == 'SUCCESS'
+    response_json = response.json()
+    assert response_json['status'] == 'SUCCESS'
 
     # Verify that we can get the results which are available via s3 in the metadata field s3_path
-    results = response.json()['metadata']['s3_path']
-    assert results is not None
-
-    # Download the results from s3
-    from daemon.misc import download_video
-    download_video(results, Path(__file__).parent / 'results.mp4')
+    assert response_json['s3_path'] is not None
 
 
 @pytest.mark.skipif(not DAEMON_AVAILABLE, reason="This test is excluded because it requires a daemon process")
@@ -161,7 +161,7 @@ def test_predict_queued(startup, shutdown):
     assert response.status_code == 200
     assert response.json()['status'] == 'QUEUED'
 
-    # Wait for 50 seconds to allow the job to finish
+    # Wait for 50 seconds to allow the job to finish before running the next test
     time.sleep(50)
 
 

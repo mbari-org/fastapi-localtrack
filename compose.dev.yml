@@ -30,7 +30,7 @@ services:
     ports:
       - "8090:80"
     volumes:
-      - ${HOME}/fastapi_localtrack_dev/nginx:/data:rw
+      - ${DATA_DIR}/nginx:/data:rw
 ###################################################################
 #  Setup Minio
 ###################################################################

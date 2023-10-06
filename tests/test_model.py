@@ -6,6 +6,8 @@ from pathlib import Path
 from urllib.parse import urlparse
 from urllib import request
 import time
+
+import boto3
 import yaml
 from fastapi.testclient import TestClient
 import pytest
@@ -16,11 +18,18 @@ from app import logger
 
 logger = logger.create_logger_file(Path(__file__).parent, __file__)
 
+global client
+
 
 @pytest.fixture
 def startup():
     global client
-
+    os.environ['MINIO_ENDPOINT_URL'] = 'http://localhost:7000'
+    os.environ['MINIO_ACCESS_KEY'] = 'localtrack'
+    os.environ['MINIO_SECRET_KEY'] = 'ReplaceMePassword'
+    os.environ['MODEL_DIR'] = (Path.home() / 'fastapi_localtrack_dev' / 'models').as_posix()
+    os.environ['DATABASE_DIR'] = (Path.home() / 'fastapi_localtrack_dev' / 'sqlite_data').as_posix()
+    os.environ['YAML_PATH'] = (Path(__file__).parent.parent / 'config.yml').as_posix()
     from app.main import app
     client = TestClient(app)
 
@@ -46,12 +55,14 @@ def test_num_models(startup, shutdown):
 
 def test_model_discovery(startup, shutdown):
     print('Test that a new model shows up in the models endpoint')
+    model_path = Path(os.environ['MODEL_DIR'])
 
     # Grab a new model from the config.yaml file and copy it to the models directory
     with open(Path(__file__).parent.parent / 'config.yml', 'r') as f:
         config = yaml.safe_load(f)
         s3_new_model = config['aws_public']['model']
-        local_file_path = Path(config['monitors']['models']['path']) / f'new{Path(s3_new_model).name}'
+        new_model = f'new{Path(s3_new_model).name}'
+        local_file_path = model_path / new_model
 
         if not local_file_path.parent.exists():
             local_file_path.parent.mkdir(parents=True)
@@ -67,12 +78,24 @@ def test_model_discovery(startup, shutdown):
         else:
             print(f'{local_file_path} already exists. Skipping download.')
 
-    # Delay to allow the model to be discovered which happens every 15 seconds in test
-    time.sleep(20)
+    # Delay to allow the model to be discovered which happens every 30 seconds
+    time.sleep(35)
 
     # Check if the new model is in the models endpoint
     response = client.get('/models')
     assert response.status_code == 200
     models = response.json()['model']
     assert len(models) == 2
-    assert 'new' in models[1]
+    assert 'new' in models[1] # The new model should be the second model in the list
+
+    # Clean-up
+
+    # Remove the new model
+    local_file_path.unlink()
+
+    # Remove the new model from the bucket
+    s3 = boto3.client('s3',
+                        endpoint_url=os.environ['MINIO_ENDPOINT_URL'],
+                        aws_secret_access_key=os.environ['MINIO_SECRET_KEY'],
+                        aws_access_key_id=os.environ['MINIO_ACCESS_KEY'])
+    s3.delete_object(Bucket=config['minio']['root_bucket'], Key=f"{config['minio']['model_prefix']}/{new_model}")

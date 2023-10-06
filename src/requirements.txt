@@ -11,3 +11,4 @@ httpx
 awscli_plugin_endpoint
 pyyaml~=6.0.1
 dependency_injector~=4.41.0
+sqlalchemy~=1.4.26

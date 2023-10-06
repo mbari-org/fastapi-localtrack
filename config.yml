@@ -1,14 +1,10 @@
-database:
-  path: "./sqlite_data"
-
 defaults:
   args: --conf-thres=0.01 --iou-thres=0.4 --max-det=100 --agnostic-nms --imgsz 640
   video_url: http://localhost:8090/video/V4361_20211006T162656Z_h265_10frame.mp4
 
 monitors:
   models:
-    path: "./models"
-    check_every: 60
+    check_every: 30
 
   docker:
     check_every: 15
