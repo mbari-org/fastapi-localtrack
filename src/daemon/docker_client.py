@@ -121,6 +121,9 @@ class DockerClient:
             with session_maker.begin() as db:
                 # Get the first job in the queue
                 job = db.query(JobLocal).filter(JobLocal.id == job_id).first()
+                if not job:
+                    err(f'No job found with id {job_id}')
+                    return
                 job_data = PydanticJobWithMedia2.from_orm(job)
                 update_media(db, job, job.media[0].name, Status.RUNNING)
 
