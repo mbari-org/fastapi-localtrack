@@ -72,7 +72,7 @@ def fetch_models():
     info(f'Fetching models from s3://{root_bucket}/{model_prefix}')
     model_s3 = list_by_suffix(root_bucket, model_prefix, ['.gz', '.pt'])
     debug(f'Creating dictionary of model names to model paths')
-    model_paths = {Path(urlparse(m).path).name: m for m in model_s3}
+    model_paths = {Path(urlparse(m).path).stem.split('.')[0]: m for m in model_s3}
     debug(f'Found {len(model_paths)} models')
     # Get an example model to use for the API documentation
     if model_paths and len(model_paths) > 0:
