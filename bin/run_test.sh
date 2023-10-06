@@ -5,6 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd )"
 BASE_DIR="$(cd "$(dirname "${SCRIPT_DIR}/../.." )" && pwd )"
 cd $BASE_DIR
 export PYTHONPATH=$BASE_DIR/src:$BASE_DIR/tests
+export SQLALCHEMY_SILENCE_UBER_WARNING=1
 
 # Run the development stack
 ./bin/run_dev.sh
@@ -20,7 +21,7 @@ export $(grep -v '^#' $BASE_DIR/.env.dev |  xargs)
 # Model tests
 pytest -s -v tests/test_model.py::test_model_discovery
 pytest -s -v tests/test_model.py::test_num_models
-pytest -s -v tests/test_model.py::test_stats
+pytest -s -v tests/test_model.py::test_status
 
 # Health tests
 pytest -s -v tests/test_health.py::test_health
