@@ -1,7 +1,7 @@
 # fastapi-localtrack, Apache-2.0 license
 # Filename: daemon/docker_client.py
 # Description: Docker client that manages docker containers
-import asyncio
+
 import os
 from datetime import datetime
 from pathlib import Path
@@ -24,11 +24,11 @@ class DockerClient:
 
     def __init__(self) -> None:
         info('Initializing DockerClient')
-        self._instances = {}
+        self._runners = {}
 
     async def check(self, database_path: Path) -> None:
         """
-        Check the status of any running jobs
+        Check the status of any running jobs and close them out
         :param database_path:
         :return:
         """
@@ -36,46 +36,56 @@ class DockerClient:
         session_maker = init_db(database_path, reset=False)
 
         jobs_to_remove = []
-        for job_id, instance in self._instances.items():
+        for job_id, runner in self._runners.items():
 
-            if instance.is_complete():
-                info(f'Job {job_id} processing complete: {instance.is_successful()}')
+            if runner.is_running():
+                info(f'Job {job_id} docker container {runner.container_name} is still running')
+                continue
+
+            if runner.is_successful():
+                info(f'Job {job_id} docker container {runner.container_name} processing complete')
+                jobs_to_remove.append(job_id)
+                await runner.fini()
 
                 # Update the job status and notify
                 with session_maker.begin() as db:
                     job = db.query(JobLocal).filter(JobLocal.id == job_id).first()
-                    if instance.is_successful():
-                        if job.media[0].metadata_b64:
-                            metadata = json_b64_decode(job.media[0].metadata_b64)
-                        else:
-                            metadata = {}
-
-                        update_media(db, job, job.media[0].name, Status.SUCCESS)
-                        jobs_to_remove.append(job_id)
-
-                        job.results, local_path, num_tracks, processing_time_secs = instance.get_results()
-
-                        metadata['s3_path'] = job.results
-                        metadata['num_tracks'] = num_tracks
-                        metadata['processing_time_secs'] = processing_time_secs
-
-                        update_media(db, job,
-                                     job.media[0].name,
-                                     Status.SUCCESS,
-                                     metadata_b64=json_b64_encode(metadata))
-
-                        await notify(job, local_path)
-
+                    if job.media[0].metadata_b64:
+                        metadata = json_b64_decode(job.media[0].metadata_b64)
                     else:
-                        update_media(db, job, job.media[0].name, Status.FAILED)
-                        jobs_to_remove.append(job_id)
-                        await notify(job, None)
+                        metadata = {}
+                    job.results, local_path, num_tracks, processing_time_secs = runner.get_results()
+                    metadata['s3_path'] = job.results
+                    metadata['num_tracks'] = num_tracks
+                    metadata['processing_time_secs'] = processing_time_secs
+                    update_media(db, job,
+                                 job.media[0].name,
+                                 Status.SUCCESS,
+                                 metadata_b64=json_b64_encode(metadata))
+                    await notify(job, local_path)
+
+            if runner.failed():
+                warn(f'Job {job_id} docker container {runner.container_name} failed')
+                jobs_to_remove.append(job_id)
+                await runner.fini()
+                # Update the job status and notify
+                with session_maker.begin() as db:
+                    job = db.query(JobLocal).filter(JobLocal.id == job_id).first()
+                    if job.media[0].metadata_b64:
+                        metadata = json_b64_decode(job.media[0].metadata_b64)
+                    else:
+                        metadata = {}
+                    update_media(db, job,
+                                 job.media[0].name,
+                                 Status.FAILED,
+                                 metadata_b64=json_b64_encode(metadata))
+                    await notify(job, local_path)
 
         # Remove the instances
         for job_id in jobs_to_remove:
-            if job_id in self._instances:
-                info(f'Removing instance for job {job_id}')
-                del self._instances[job_id]
+            if job_id in self._runners:
+                info(f'Removing runner for job {job_id} from the list of runners')
+                del self._runners[job_id]
 
     async def process(self,
                       num_gpus: int,
@@ -113,7 +123,9 @@ class DockerClient:
         client = docker.from_env()
 
         # Get all active docker containers
-        all_containers = client.containers.list(all=True, filters={'name': DEFAULT_CONTAINER_NAME})
+        all_containers = client.containers.list(all=True)
+        all_containers = [container for container in all_containers if
+                          container.name.startswith(DEFAULT_CONTAINER_NAME)]
 
         info(f'Found {len(all_containers)} active {DEFAULT_CONTAINER_NAME} docker containers')
 
@@ -136,26 +148,25 @@ class DockerClient:
                 args = job_data.args or DEFAULT_ARGS
 
                 info(f'Running job {job_data.id} with output {output_s3}')
-                instance = DockerRunner(image_name=job_data.engine,
-                                        job_id=job_data.id,
-                                        output_s3=output_s3,
-                                        video_url=job_data.media[0].name,
-                                        model_s3=job_data.model,
-                                        track_s3=s3_track_config,
-                                        args=args)
+                runner = DockerRunner(image_name=job_data.engine,
+                                      job_id=job_data.id,
+                                      output_s3=output_s3,
+                                      video_url=job_data.media[0].name,
+                                      model_s3=job_data.model,
+                                      track_s3=s3_track_config,
+                                      args=args)
 
                 with session_maker.begin() as db:
                     job = db.query(JobLocal).filter(JobLocal.id == job_data.id).first()
                     update_media(db, job, job.media[0].name, Status.RUNNING)
 
-                self._instances[job_data.id] = instance
+                self._runners[job_data.id] = runner
 
-                # Process the video asynchronously
-                asyncio.run_coroutine_threadsafe(instance.run(has_gpu), asyncio.get_event_loop())
+                await runner.run(has_gpu)
             else:
                 err(f'No job found with id {job_id}')
         else:
-            info(f'Already running {len(all_containers)} jobs. Waiting for one to finish')
+            info(f'Already running maximum allowed {len(all_containers)} jobs. Waiting for one to finish')
 
     @staticmethod
     def startup(database_path: Path) -> None:
@@ -195,27 +206,24 @@ class DockerClient:
                     job.media[0].status = Status.FAILED
 
         # Get all active docker containers
-        all_containers = client.containers.list()
-        # Prune to only those that start with the default container name
+        all_containers = client.containers.list(all=True)
         all_containers = [container for container in all_containers if
                           container.name.startswith(DEFAULT_CONTAINER_NAME)]
 
-        if len(all_containers) > 0:
-            # Should never get here unless something went wrong
-            for container in all_containers:
-                err(
-                    f'Container {container.id} was running but the service was restarted. Stopping and removing it')
-                # Stop the container
-                try:
-                    container = client.containers.get(container.id)
-                    if container.status == 'running':
-                        container.kill()
+        # Should never get here unless something went wrong
+        for container in all_containers:
+            err(
+                f'Container {container.id} was running but the service was restarted. Stopping and removing it')
+            # Stop the container
+            try:
+                container = client.containers.get(container.id)
+                if container.status == 'running':
                     container.stop()
                     info(f"Container {container.id} stopped successfully.")
-                    container.remove()
-                    info(f"Container {container.id} removed successfully.")
-                except Exception as e:
-                    exception(e)
+                container.remove()
+                info(f"Container {container.id} removed successfully.")
+            except Exception as e:
+                exception(e)
 
 
 async def notify(job: JobLocal, local_path: Path = None) -> None:
@@ -230,28 +238,23 @@ async def notify(job: JobLocal, local_path: Path = None) -> None:
         warn("NOTIFY_URL environment variable not set. Skipping notification")
         return
 
-    # Add any additional kwargs to the metadata
     metadata = json_b64_decode(job.metadata_b64)
-    # Add job id to the metadata
-    metadata['job_id'] = job.id
 
     if local_path and local_path.exists():
         with local_path.open("rb") as file:
             results = file.read()
             form_data = {
-                "job_id": f"{job.id}",
                 "metadata": (None, json.dumps(metadata), 'application/json'),
                 "file": results
             }
     else:
         err(f'No track tar file found for job {job.id}')
         form_data = {
-            "job_id": f"{job.id}",
             "metadata": (None, json.dumps(metadata), 'application/json'),
             "file": None
         }
 
-    info(f'Sending notification {metadata} to {notify_url}')
+    info(f'Sending notification for job {job.id} to {notify_url}')
 
     # Send the multipart POST request
     response = requests.post(notify_url, files=form_data)

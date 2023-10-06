@@ -4,10 +4,11 @@
 
 from datetime import datetime
 
+from aiodocker import Docker, DockerError
 import asyncio
+import docker
 
 import yaml
-from aiodocker import Docker, DockerError
 import os
 import tarfile
 import shutil
@@ -16,8 +17,7 @@ from urllib.parse import urlparse
 from pathlib import Path
 
 from daemon.misc import download_video, upload_files_to_s3
-
-from .logger import info, debug, err
+from daemon.logger import info, debug, err
 
 DEFAULT_CONTAINER_NAME = 'strongsort'
 
@@ -41,12 +41,13 @@ class DockerRunner:
         :param track_s3:: location of the track configuration in s3
         :param args: optional arguments to pass to the track command
         """
+        self._start_utc = None
         self._container_name = f'{DEFAULT_CONTAINER_NAME}-{datetime.utcnow().strftime("%Y%m%d%H%M%S")}'
+        self._container = None
         self._image_name = image_name
         self._track_s3 = track_s3
         self._total_time = None
         self._args = args
-        self._is_successful = False
         self._is_complete = False
         self._video_url = video_url
         self._model_s3 = model_s3
@@ -57,11 +58,38 @@ class DockerRunner:
         self._in_path.mkdir(parents=True, exist_ok=True)
         self._out_path.mkdir(parents=True, exist_ok=True)
 
-    def clean(self):
+    async def fini(self):
         """
-        Clean up the input/output directories
+        Final processing after the container has finished; upload results, and clean up temp dir
         :return:
         """
+        self._total_time = datetime.utcnow() - self._start_utc
+        p = urlparse(self._output_s3)
+        await upload_files_to_s3(bucket=p.netloc,
+                                 s3_path=p.path.lstrip('/'),
+                                 local_path=self._out_path.as_posix(),
+                                 suffixes=['.gz', '.json', ".mp4", ".txt"])
+        self.clean()
+
+    @property
+    def container_name(self) -> str:
+        return self._container_name
+
+    def clean(self):
+        """
+        Clean up the input/output directories and the container
+        :return:
+        """
+        # Clean up the container
+        client = docker.from_env()
+        containers = client.containers.list(all=True, filters={'name': self._container_name})
+        if len(containers) == 1:
+            container = client.containers.get(containers[0].id)
+            if container.status == 'running':
+                container.stop()
+                info(f"Container {container.id} stopped successfully.")
+            container.remove()
+            info(f"Container {container.id} removed successfully.")
 
         # Clean up the input directory
         debug(f'Removing {self._in_path.as_posix()}')
@@ -87,10 +115,6 @@ class DockerRunner:
                 f' Are you sure your nginx server is running?')
             return
 
-        home = Path.home().as_posix()
-        profile = os.environ.get('AWS_DEFAULT_PROFILE', 'default')
-        info(f'Using credentials file in {home}/.aws and profile {profile}')
-
         # Setup the command to run to be AWS SageMaker compliant, /opt/ml/input, etc. These are the default,
         # but included here for clarity
         command = [f"dettrack", "--model-s3", self._model_s3] + \
@@ -104,19 +128,8 @@ class DockerRunner:
 
         info(f'Using command {command}')
 
-        # Run the docker container asynchronously and wait for it to finish
-        start_utc = datetime.utcnow()
-        await self.wait_for_container(has_gpu, self._image_name, self._container_name, command, self._temp_path,
-                                      self._out_path)
-        info(f'Using command {command}')
-        self._total_time = datetime.utcnow() - start_utc
-
-        # Upload the results to s3
-        p = urlparse(self._output_s3)
-        await upload_files_to_s3(bucket=p.netloc,
-                                 s3_path=p.path.lstrip('/'),
-                                 local_path=self._out_path.as_posix(),
-                                 suffixes=['.gz', '.json', ".mp4", ".txt"])
+        self._start_utc = datetime.utcnow()
+        await self.wait_for_container(has_gpu, command)
 
     def get_num_tracks(self):
         """
@@ -148,48 +161,67 @@ class DockerRunner:
 
         return None, None, None, None
 
-    def get_log_path(self) -> Path:
+    def failed(self) -> bool:
         """
-        Get the log from processing
-        :return: Path to the log file
+        Check if container exited
+        :return: True if exited and no data created
         """
-        return self._out_path / 'logs.txt'
+        client = docker.from_env()
+        containers = client.containers.list(all=True, filters={'name': self._container_name})
+        if len(containers) == 1:
+            container = containers[0]
+            if container.status == 'exited' and not self.is_successful():
+                return True
 
-    def is_successful(self):
+        return False
+
+    def is_successful(self) -> bool:
         """
         Check if the container has successfully completed
         :return: True if a .tar.gz was created, False otherwise
         """
-        return self._is_successful
+        # Complete if the output directory has a tar.gz file in it
+        if len(list(self._out_path.glob('*.tar.gz'))) > 0:
+            return True
 
-    def is_complete(self):
-        """
-        Check if the processing has completed
-        :return:
-        """
-        return self._is_complete
+        return False
 
-    async def wait_for_container(self, has_gpu: bool, image_name: str, container_name: str, command: [str], temp_path: Path,
-                                 output_path: Path):
+    def get_container_status(self) -> str | None:
+        """
+        Get the status of the container
+        :return: The status of the container, or None if it does not exist
+        """
+        docker_client = docker.from_env()
+        try:
+            container = docker_client.containers.get(self._container_name)
+            return container.status
+        except docker.errors.NotFound:
+            pass
+        return None
+
+    def is_running(self):
+        """
+        Check if the container is running
+        :return: True if the container is not running, False otherwise
+        """
+        status = self.get_container_status()
+        if status == 'running':
+            return True
+
+        return False
+
+    async def wait_for_container(self, has_gpu: bool, command: [str]):
         async with Docker() as docker_aoi:
-            try:
-                await docker_aoi.images.inspect(image_name)
-            except DockerError as e:
-                if e.status == 404:
-                    await docker_aoi.pull(image_name)
-                else:
-                    err(f'Error retrieving {image_name} image.')
-                    raise DockerError(e.status, f'Error retrieving {image_name} image.')
 
             try:
 
                 # If the volume mount fastapi-localtrack_scratch exists, bind it to the temp directory -
                 # this is pass through from the parent docker container in production
-                binds = [f"{temp_path}:{temp_path}"]
+                binds = [f"{self._temp_path}:{self._temp_path}"]
                 volumes = await docker_aoi.volumes.list()
                 for v in volumes['Volumes']:
                     if v['Name'] == 'fastapi-localtrack_scratch':
-                        binds = [f"fastapi-localtrack_scratch:{temp_path}"]
+                        binds = [f"fastapi-localtrack_scratch:{self._temp_path}"]
                         break
 
                 debug(f"Using binds {binds}")
@@ -200,7 +232,7 @@ class DockerRunner:
 
                 # Create the configuration for the docker container
                 config = {
-                    'Image': image_name,
+                    'Image': self._image_name,
                     'HostConfig': {
                         'NetworkMode': 'host',
                         'Binds': binds,
@@ -211,14 +243,7 @@ class DockerRunner:
                         f"AWS_SECRET_ACCESS_KEY={os.environ.get('MINIO_SECRET_KEY', 'ReplaceMePassword')}",
                         f"AWS_ENDPOINT_URL={os.environ.get('MINIO_EXTERNAL_ENDPOINT_URL', 'http://localhost:7000')}"
                     ],
-                    'Cmd': command,
-                    'AttachStdin': True,
-                    'AttachStdout': True,
-                    'AttachStderr': True,
-                    'Tty': False,
-                    'OpenStdin': True,
-                    'StdinOnce': True
-
+                    'Cmd': command
                 }
 
                 # Check if the runtime nvidia is available, and if so, use it
@@ -227,31 +252,14 @@ class DockerRunner:
                     info(f"NVIDIA runtime available")
 
                 # Run with network mode host to allow access to the local minio server
-                container = await docker_aoi.containers.create_or_replace(
+                self._container = await docker_aoi.containers.create_or_replace(
                     config=config,
-                    name=container_name,
+                    name=self._container_name,
                 )
-                info(f'Running docker container {container.id} {container_name} with command {command}')
-                info(f'Waiting for container {container.id} to finish')
-
-                await container.start()
-                await container.wait()
-
-                # Redirect the logs to a file since they can be large
-                log_path = output_path / 'logs.txt'
-                info(f"Saving docker container {container.id} {container_name} log output to {log_path}")
-                with log_path.open('w') as f:
-                    logs = await container.log(stdout=True, stderr=True)
-                    f.write('\n'.join(logs))
-
-                # Complete if the output directory has a tar.gz file in it
-                if len(list(self._out_path.glob('*.tar.gz'))) > 0:
-                    self._is_successful = True
-
-                await container.delete(force=True)
-                self._is_complete = True
+                info(f'Running docker container {self._container.id} {self._container_name} with command {command}')
+                await self._container.start()
             except Exception as e:
-                raise e
+                err(e)
 
 
 async def main():

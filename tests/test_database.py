@@ -9,7 +9,6 @@ import os
 import signal
 
 import pytest
-import yaml
 from sqlalchemy.orm import Session
 from deepsea_ai.database.job.database_helper import get_num_failed, get_num_completed, json_b64_decode, json_b64_encode, \
     get_status

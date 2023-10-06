@@ -22,6 +22,8 @@ class Monitor:
 
 
 class DockerMonitor(Monitor):
+    _num_gpus = 0
+
     def __init__(
             self,
             docker_client: DockerClient,
@@ -51,11 +53,12 @@ class DockerMonitor(Monitor):
             # Handle startup edge cases
             DockerClient.startup(self._database_path)
 
-            self.num_gpus = int(os.environ.get('NUM_GPUS', 0))
+            self._num_gpus = int(os.environ.get('NUM_GPUS', 0))
 
             super().__init__(check_every=options.get("check_every"))
         except Exception as e:
             exception(f'Error initializing DockerMonitor: {e}')
+            exit(-1)
 
     async def check(self) -> None:
         time_start = time.time()
@@ -63,7 +66,7 @@ class DockerMonitor(Monitor):
 
         try:
             await self._client.process(
-                num_gpus=self.num_gpus,
+                num_gpus=self._num_gpus,
                 database_path=self._database_path,
                 root_bucket=self._root_bucket,
                 track_prefix=self._track_prefix,
@@ -72,6 +75,7 @@ class DockerMonitor(Monitor):
             await self._client.check(database_path=self._database_path)
         except Exception as e:
             exception(f'Error processing docker jobs: {e}')
+            exit(-1)
 
         time_end = time.time()
         time_took = time_end - time_start
@@ -99,11 +103,7 @@ class ModelSyncMonitor(Monitor):
         else:
             self._model_prefix = minio.get("model_prefix")
 
-        if os.environ.get('MODEL_DIR'):
-            self._model_path = os.environ.get('MODEL_DIR')
-        else:
-            self._model_path = options.get("path")
-
+        self._model_path = os.environ.get('MODEL_DIR', Path.cwd().as_posix())
         super().__init__(check_every=options.get("check_every"))
 
     async def check(self) -> None:

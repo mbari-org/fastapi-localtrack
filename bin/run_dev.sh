@@ -33,7 +33,7 @@ export $(grep -v '^#' $BASE_DIR/.env.dev |  xargs)
 # Replace ${HOME} with the actual home directory and export needed variables
 DATA_DIR=${DATA_DIR/\$\{HOME\}/$HOME}
 export DATABASE_DIR=${DATA_DIR}/sqlite_data # Path to local database
-export MODEL_DIR=${DATA_DIR}/models # Path to local database
+export MODEL_DIR=${DATA_DIR}/models # Path to models
 
 echo "Fetch a few videos to serve in the default nginx/video directory"
 mkdir -p ${DATA_DIR}/nginx/video
