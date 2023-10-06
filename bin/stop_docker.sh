@@ -6,8 +6,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}" )" && pwd )"
 BASE_DIR="$(cd "$(dirname "${SCRIPT_DIR}/../.." )" && pwd )"
 
 cd $BASE_DIR
-docker-compose --env-file .env.dev -f compose.dev.yml down
-docker-compose --env-file .env -f compose.yml down
+
+# Get the short version of the hash of the commit
+git_hash=$(git log -1 --format=%h)
+
+# Stop both prod/dev stacks
+GIT_VERSION="${git_hash}" docker-compose --env-file .env.dev -f compose.dev.yml down
+GIT_VERSION="${git_hash}" docker-compose --env-file .env -f compose.yml down
 
 # Remove the networks
 docker network rm dev-minio-net
