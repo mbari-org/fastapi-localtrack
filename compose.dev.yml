@@ -47,6 +47,7 @@ services:
       /bin/sh -c "
       mc alias set myminio http://dev-minio:9000 ${MINIO_ACCESS_KEY} ${MINIO_SECRET_KEY};
       mc mb --ignore-existing myminio/${ROOT_BUCKET_NAME}/${MODEL_PREFIX};
+      mc mb --ignore-existing myminio/${ROOT_BUCKET_NAME}/${MODEL_PREFIX}/track-config;
       mc mb --ignore-existing myminio/${ROOT_BUCKET_NAME}/${TRACK_PREFIX};
       mc admin user add myminio fastapi ${MINIO_LIVE_ACCESS_KEY};
       mc admin policy list myminio;
@@ -57,8 +58,6 @@ services:
       mc cp best.pt myminio/${ROOT_BUCKET_NAME}/${MODEL_PREFIX}/MegadetectorTest.pt;
       exit 0;
       "
-    volumes:
-      - ${DATA_DIR}/objects:/data
 networks:
   dev-minio-net:
     external: true
