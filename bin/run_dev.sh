@@ -7,11 +7,6 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
 BASE_DIR="$(cd "$(dirname "${SCRIPT_DIR}/../.." )" && pwd )"
 cd $BASE_DIR
 
-if [ "$1" == "build" ]; then
-  echo "Build the docker images"
-  ./bin/build_docker.sh
-fi
-
 # Get the short version of the hash of the commit
 git_hash=$(git log -1 --format=%h)
 
@@ -34,6 +29,9 @@ export $(grep -v '^#' $BASE_DIR/.env.dev |  xargs)
 DATA_DIR=${DATA_DIR/\$\{HOME\}/$HOME}
 export DATABASE_DIR=${DATA_DIR}/sqlite_data # Path to local database
 export MODEL_DIR=${DATA_DIR}/models # Path to models
+
+# Build nginx
+docker build -t mbari/nginx -f containers/nginx/Dockerfile .
 
 echo "Fetch a few videos to serve in the default nginx/video directory"
 mkdir -p ${DATA_DIR}/nginx/video

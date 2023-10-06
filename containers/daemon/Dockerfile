@@ -50,14 +50,17 @@ COPY ./src $APP_DIR/src
 COPY ./config.yml $APP_DIR/config.yml
 RUN pip install --no-cache-dir --upgrade -r $APP_DIR/src/requirements.txt
 
-# set MBARI default docker user and group id
-ARG DOCKER_GID=146
+# set MBARI docker user and group id
+ARG DOCKER_GID=136
 ARG DOCKER_UID=582
+
+RUN mkdir /models /sqlite_data
 
 # Add a non-root user
 RUN groupadd -f -r --gid ${DOCKER_GID} docker && \
     useradd -r --uid ${DOCKER_UID} -g docker docker_user && \
-    chown -R docker_user:docker $APP_DIR 
+    chown -R docker_user:docker $APP_DIR && \
+    chown docker_user:docker /models /sqlite_data /tmp
 
 USER docker_user
 

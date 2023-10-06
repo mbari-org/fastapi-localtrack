@@ -59,7 +59,6 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock
       - scratch:/tmp
       - ${DATA_DIR}/sqlite_data:/sqlite_data
-      - ${CRED_DIR}:/root/.aws
       - ${MODEL_DIR}:/models
     networks:
       - minio-net
@@ -97,6 +96,7 @@ services:
 
 volumes:
     scratch:
+    models:
 
 networks:
   minio-net:

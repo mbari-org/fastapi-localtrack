@@ -43,6 +43,19 @@ COPY ./src/app $APP_DIR/src/app
 COPY config.yml  $APP_DIR/config.yml
 RUN pip install --no-cache-dir --upgrade -r $APP_DIR/src/requirements.txt
 
+# set MBARI docker user and group id
+ARG DOCKER_GID=136
+ARG DOCKER_UID=582
+
+RUN mkdir /sqlite_data
+
+# Add a non-root user
+RUN groupadd -f -r --gid ${DOCKER_GID} docker && \
+    useradd -r --uid ${DOCKER_UID} -g docker docker_user && \
+    chown -R docker_user:docker $APP_DIR && \
+    chown docker_user:docker /models
+
+USER docker_user
 
 # run the FastAPI server
 EXPOSE 80

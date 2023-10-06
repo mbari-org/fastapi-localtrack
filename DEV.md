@@ -4,7 +4,7 @@ Install for local development with
 
 ```shell
 conda env create
-./bin/run_dev.sh (optional)build
+./bin/run_dev.sh
 ```
  
 This will start an NGINX server, FastAPI server on port 8000, and
