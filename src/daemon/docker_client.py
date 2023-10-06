@@ -45,7 +45,6 @@ class DockerClient:
             if runner.is_successful():
                 info(f'Job {job_id} docker container {runner.container_name} processing complete')
                 jobs_to_remove.append(job_id)
-                await runner.fini()
 
                 # Update the job status and notify
                 with session_maker.begin() as db:
@@ -63,11 +62,11 @@ class DockerClient:
                                  Status.SUCCESS,
                                  metadata_b64=json_b64_encode(metadata))
                     await notify(job, local_path)
+                    await runner.fini()
 
             if runner.failed():
                 warn(f'Job {job_id} docker container {runner.container_name} failed')
                 jobs_to_remove.append(job_id)
-                await runner.fini()
                 # Update the job status and notify
                 with session_maker.begin() as db:
                     job = db.query(JobLocal).filter(JobLocal.id == job_id).first()
@@ -79,7 +78,11 @@ class DockerClient:
                                  job.media[0].name,
                                  Status.FAILED,
                                  metadata_b64=json_b64_encode(metadata))
+                    # Create a track tar file that is empty
+                    local_path = Path(f'/tmp/empty.tar.gz')
+                    local_path.touch()
                     await notify(job, local_path)
+                    await runner.fini()
 
         # Remove the instances
         for job_id in jobs_to_remove:
