@@ -51,15 +51,15 @@ COPY ./config.yml $APP_DIR/config.yml
 RUN pip install --no-cache-dir --upgrade -r $APP_DIR/src/requirements.txt
 
 # set MBARI default docker user and group id
-#ARG DOCKER_GID=146
-#ARG DOCKER_UID=582
+ARG DOCKER_GID=146
+ARG DOCKER_UID=582
 
 # Add a non-root user
-#RUN groupadd -f -r --gid ${DOCKER_GID} docker && \
-#    useradd -r --uid ${DOCKER_UID} -g docker docker_user && \
-#    chown -R docker_user:docker $APP_DIR 
+RUN groupadd -f -r --gid ${DOCKER_GID} docker && \
+    useradd -r --uid ${DOCKER_UID} -g docker docker_user && \
+    chown -R docker_user:docker $APP_DIR 
 
-#USER docker_user
+USER docker_user
 
 # run the daemon
 ENTRYPOINT ["python", "-m", "daemon"]
