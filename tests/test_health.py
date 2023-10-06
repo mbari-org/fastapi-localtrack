@@ -4,8 +4,6 @@
 
 from pathlib import Path
 
-import yaml
-
 from app.job import init_db
 from fastapi.testclient import TestClient
 
