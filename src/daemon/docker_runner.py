@@ -46,7 +46,6 @@ class DockerRunner:
         self._container = None
         self._image_name = image_name
         self._track_s3 = track_s3
-        self._total_time = None
         self._args = args
         self._is_complete = False
         self._video_url = video_url
@@ -63,7 +62,6 @@ class DockerRunner:
         Final processing after the container has finished; upload results, and clean up temp dir
         :return:
         """
-        self._total_time = datetime.utcnow() - self._start_utc
         p = urlparse(self._output_s3)
         await upload_files_to_s3(bucket=p.netloc,
                                  s3_path=p.path.lstrip('/'),
@@ -154,10 +152,11 @@ class DockerRunner:
         :return: The s3 location and local path of the results if they exist, None otherwise, the number of tracks,
         and the total time
         """
+        total_time = datetime.utcnow() - self._start_utc
         if len(list(self._out_path.glob('*.tar.gz'))) > 0:
             track_path = Path(list(self._out_path.glob('*.tar.gz'))[0])
             s3_loc = f'{self._output_s3}/output/{track_path.name}'
-            return s3_loc, track_path, self.get_num_tracks(), self._total_time.total_seconds()
+            return s3_loc, track_path, self.get_num_tracks(), total_time.total_seconds()
 
         return None, None, None, None
 
