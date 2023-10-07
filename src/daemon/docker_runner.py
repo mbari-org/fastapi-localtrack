@@ -54,6 +54,11 @@ class DockerRunner:
         self._temp_path = Path('/tmp')
         self._in_path = self._temp_path / str(job_id) / 'input'
         self._out_path = self._temp_path / str(job_id) / 'output'
+        # Create the input/output directories if they don't exist, and clean them if they do
+        if self._in_path.exists():
+            shutil.rmtree(self._in_path.as_posix())
+        if self._out_path.exists():
+            shutil.rmtree(self._out_path.as_posix())
         self._in_path.mkdir(parents=True, exist_ok=True)
         self._out_path.mkdir(parents=True, exist_ok=True)
 
@@ -155,7 +160,7 @@ class DockerRunner:
         total_time = datetime.utcnow() - self._start_utc
         if len(list(self._out_path.glob('*.tar.gz'))) > 0:
             track_path = Path(list(self._out_path.glob('*.tar.gz'))[0])
-            s3_loc = f'{self._output_s3}/output/{track_path.name}'
+            s3_loc = f'{self._output_s3}/{track_path.name}'
             return s3_loc, track_path, self.get_num_tracks(), total_time.total_seconds()
 
         return None, None, None, None
