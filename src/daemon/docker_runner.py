@@ -163,7 +163,7 @@ class DockerRunner:
         total_time = datetime.utcnow() - self._start_utc
         if len(list(self._out_path.glob('*.tar.gz'))) > 0:
             track_path = Path(list(self._out_path.glob('*.tar.gz'))[0])
-            s3_loc = f'{self._output_s3}/output/{track_path.name}'
+            s3_loc = f'{self._output_s3}/{track_path.name}'
             return s3_loc, track_path, self.get_num_tracks(), total_time.total_seconds()
 
         return None, None, None, None
