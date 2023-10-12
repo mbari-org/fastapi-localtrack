@@ -40,7 +40,7 @@ ENV PYTHONPATH=$APP_DIR/src
 WORKDIR $APP_DIR/src/app
 COPY ./src/requirements.txt $APP_DIR/src/requirements.txt
 COPY ./src/app $APP_DIR/src/app
-COPY config.yml  $APP_DIR/config.yml
+COPY ./config.yml  $APP_DIR/config.yml
 RUN pip install --no-cache-dir --upgrade -r $APP_DIR/src/requirements.txt
 
 # set MBARI docker user and group id
