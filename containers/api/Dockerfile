@@ -53,7 +53,7 @@ RUN mkdir /sqlite_data
 RUN groupadd -f -r --gid ${DOCKER_GID} docker && \
     useradd -r --uid ${DOCKER_UID} -g docker docker_user && \
     chown -R docker_user:docker $APP_DIR && \
-    chown docker_user:docker /models
+    chown docker_user:docker /sqlite_data
 
 USER docker_user
 

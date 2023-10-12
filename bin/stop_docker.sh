@@ -11,8 +11,8 @@ cd $BASE_DIR
 git_hash=$(git log -1 --format=%h)
 
 # Stop both prod/dev stacks
-GIT_VERSION="${git_hash}" docker-compose --env-file .env.dev -f compose.dev.yml down
-GIT_VERSION="${git_hash}" docker-compose --env-file .env -f compose.yml down
+GIT_VERSION="${git_hash}" COMPOSE_PROJECT_NAME=fastapi-localtrack-dev docker-compose --env-file .env.dev -f compose.dev.yml down --remove-orphans
+GIT_VERSION="${git_hash}" COMPOSE_PROJECT_NAME=fastapi-localtrack docker-compose --env-file .env -f compose.yml down --remove-orphans
 
 # Remove the networks
 docker network rm dev-minio-net

@@ -28,6 +28,7 @@ class DockerRunner:
                  image_name: str,
                  track_s3: str,
                  job_id: int,
+                 job_name: str,
                  video_url: str,
                  model_s3: str,
                  output_s3: str,
@@ -47,14 +48,16 @@ class DockerRunner:
         self._image_name = image_name
         self._track_s3 = track_s3
         self._args = args
+        self._job_name = job_name
         self._is_complete = False
         self._video_url = video_url
         self._model_s3 = model_s3
         self._output_s3 = output_s3
-        self._temp_path = Path('/tmp')
+        self._temp_path = Path(os.environ.get('TEMP_DIR', Path.cwd() / 'temp'))
         self._in_path = self._temp_path / str(job_id) / 'input'
         self._out_path = self._temp_path / str(job_id) / 'output'
         # Create the input/output directories if they don't exist, and clean them if they do
+        self._temp_path.mkdir(parents=True, exist_ok=True)
         if self._in_path.exists():
             shutil.rmtree(self._in_path.as_posix())
         if self._out_path.exists():
@@ -113,12 +116,12 @@ class DockerRunner:
         info(f'Processing {self._video_url} with {self._model_s3} and {self._track_s3} to {self._output_s3}')
 
         info(f'Downloading {self._video_url} to {self._in_path}')
-        if not download_video(self._video_url, self._in_path):
-            err(f'Failed to download {self._video_url} to {self._in_path}.'
-                f' Are you sure your nginx server is running?')
+        # Run the download in the background
+        if not await asyncio.to_thread(download_video, self._video_url, self._in_path):
+            err(f'Failed to download {self._video_url} to {self._in_path}.')
             return
 
-        # Setup the command to run to be AWS SageMaker compliant, /opt/ml/input, etc. These are the default,
+        # Set up the command to run to be AWS SageMaker compliant, /opt/ml/input, etc. These are the default,
         # but included here for clarity
         command = [f"dettrack", "--model-s3", self._model_s3] + \
                   ["--config-s3", self._track_s3] + \
@@ -132,7 +135,7 @@ class DockerRunner:
         info(f'Using command {command}')
 
         self._start_utc = datetime.utcnow()
-        await self.wait_for_container(has_gpu, command)
+        await self.wait_for_container(has_gpu, command, os.environ.get('MODE', 'dev'))
 
     def get_num_tracks(self):
         """
@@ -160,7 +163,7 @@ class DockerRunner:
         total_time = datetime.utcnow() - self._start_utc
         if len(list(self._out_path.glob('*.tar.gz'))) > 0:
             track_path = Path(list(self._out_path.glob('*.tar.gz'))[0])
-            s3_loc = f'{self._output_s3}/{track_path.name}'
+            s3_loc = f'{self._output_s3}/output/{track_path.name}'
             return s3_loc, track_path, self.get_num_tracks(), total_time.total_seconds()
 
         return None, None, None, None
@@ -214,7 +217,7 @@ class DockerRunner:
 
         return False
 
-    async def wait_for_container(self, has_gpu: bool, command: [str]):
+    async def wait_for_container(self, has_gpu: bool, command: [str], mode: str):
         async with Docker() as docker_aoi:
 
             try:
@@ -224,8 +227,8 @@ class DockerRunner:
                 binds = [f"{self._temp_path}:{self._temp_path}"]
                 volumes = await docker_aoi.volumes.list()
                 for v in volumes['Volumes']:
-                    if v['Name'] == 'fastapi-localtrack_scratch':
-                        binds = [f"fastapi-localtrack_scratch:{self._temp_path}"]
+                    if 'scratch' in v['Name'] and mode == 'prod':
+                        binds = [f"{v['Name']}:{self._temp_path}"]
                         break
 
                 debug(f"Using binds {binds}")
@@ -242,6 +245,7 @@ class DockerRunner:
                         'Binds': binds,
                     },
                     'Env': [
+                        f"JOB_NAME={self._job_name}",
                         f"AWS_DEFAULT_REGION={os.environ.get('AWS_DEFAULT_REGION', 'us-west-2')}",
                         f"AWS_ACCESS_KEY_ID={os.environ.get('MINIO_ACCESS_KEY', 'localtrack')}",
                         f"AWS_SECRET_ACCESS_KEY={os.environ.get('MINIO_SECRET_KEY', 'ReplaceMePassword')}",
@@ -280,6 +284,7 @@ async def main():
 
         # Create a docker runner and run it
         p = DockerRunner(job_id=job_id,
+                         job_name='test',
                          track_s3=config['monitors']['docker']['strongsort_track_config'],
                          output_s3=output_s3,
                          video_url='http://localhost:8090/video/V4361_20211006T162656Z_h265_10frame.mp4',

@@ -53,7 +53,8 @@ class DockerMonitor(Monitor):
             # Handle startup edge cases
             DockerClient.startup(self._database_path)
 
-            self._num_gpus = int(os.environ.get('NUM_GPUS', 0))
+            self._num_gpus = int(os.environ.get('NUM_GPUS', 0)) # Number of GPUs to use
+            self._num_procs = int(os.environ.get('NUM_CONCURRENT_PROCS', 1)) # Number of processes to run concurrently
 
             super().__init__(check_every=options.get("check_every"))
         except Exception as e:
@@ -64,9 +65,14 @@ class DockerMonitor(Monitor):
         time_start = time.time()
         info('Checking DockerMonitor')
 
+        has_gpu = False
+        if self._num_gpus > 0:
+            has_gpu = True
+
         try:
             await self._client.process(
-                num_gpus=self._num_gpus,
+                has_gpu=has_gpu,
+                num_procs=self._num_procs,
                 database_path=self._database_path,
                 root_bucket=self._root_bucket,
                 track_prefix=self._track_prefix,

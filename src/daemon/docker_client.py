@@ -9,6 +9,7 @@ from pathlib import Path
 import docker
 import requests
 import json
+import tempfile
 from aiohttp import ClientResponse
 from deepsea_ai.database.job import Status, JobType
 from deepsea_ai.database.job.database_helper import json_b64_decode, json_b64_encode, get_status
@@ -29,7 +30,7 @@ class DockerClient:
     async def check(self, database_path: Path) -> None:
         """
         Check the status of any running jobs and close them out
-        :param database_path:
+        :param database_path: The path to the database
         :return:
         """
 
@@ -79,10 +80,12 @@ class DockerClient:
                                  Status.FAILED,
                                  metadata_b64=json_b64_encode(metadata))
                     # Create a track tar file that is empty
-                    local_path = Path(f'/tmp/empty.tar.gz')
+                    temp_path = Path(tempfile.gettempdir())
+                    local_path = temp_path / 'empty.tar.gz'
                     local_path.touch()
                     await notify(job, local_path)
                     await runner.fini()
+                    local_path.unlink()
 
         # Remove the instances
         for job_id in jobs_to_remove:
@@ -91,27 +94,21 @@ class DockerClient:
                 del self._runners[job_id]
 
     async def process(self,
-                      num_gpus: int,
+                      has_gpu: bool,
+                      num_procs: int,
                       database_path: Path,
                       root_bucket: str,
                       track_prefix: str,
                       s3_track_config: str) -> ClientResponse:
         """
         Process any jobs that are queued. This function is called by the daemon module
-        :param num_gpus: The number of GPUs available
+        :param has_gpu: True if the machine has a GPU(s)
+        :param num_procs: The number of processes to run in parallel
         :param database_path: The path to the database
         :param root_bucket: The root bucket for the track tar files
         :param track_prefix: The prefix for the track tar files
         :param s3_track_config: The s3 track config
         """
-        # Two files per GPU
-        if num_gpus > 0:
-            has_gpu = True
-            max_concurrent_jobs = num_gpus * 2
-        else:
-            has_gpu = False
-            max_concurrent_jobs = 2
-
         session_maker = init_db(database_path, reset=False)
 
         # Get any media that are queued for processing
@@ -132,7 +129,7 @@ class DockerClient:
 
         info(f'Found {len(all_containers)} active {DEFAULT_CONTAINER_NAME} docker containers')
 
-        if len(all_containers) < max_concurrent_jobs:
+        if len(all_containers) <= num_procs:
             with session_maker.begin() as db:
                 # Get the first job in the queue
                 job = db.query(JobLocal).filter(JobLocal.id == job_id).first()
@@ -145,7 +142,7 @@ class DockerClient:
             if job_data:
                 # Make a prefix for the output based on the video path (sans http) and the current time
                 key = f"{datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')}"
-                output_s3 = f"s3://{root_bucket}/{track_prefix}/{key}/output"
+                output_s3 = f"s3://{root_bucket}/{track_prefix}/{key}"
 
                 # Add default args if none are provided
                 args = job_data.args or DEFAULT_ARGS
@@ -153,6 +150,7 @@ class DockerClient:
                 info(f'Running job {job_data.id} with output {output_s3}')
                 runner = DockerRunner(image_name=job_data.engine,
                                       job_id=job_data.id,
+                                      job_name=job_data.name,
                                       output_s3=output_s3,
                                       video_url=job_data.media[0].name,
                                       model_s3=job_data.model,
@@ -223,7 +221,6 @@ class DockerClient:
                 if container.status == 'running':
                     container.stop()
                     info(f"Container {container.id} stopped successfully.")
-                container.remove()
                 info(f"Container {container.id} removed successfully.")
             except Exception as e:
                 exception(e)

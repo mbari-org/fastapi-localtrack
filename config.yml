@@ -7,9 +7,9 @@ monitors:
     check_every: 30
 
   docker:
-    check_every: 15
-    strongsort_container_arm64: mbari/strongsort-yolov5:arm64-d83ee6a
-    strongsort_container: mbari/strongsort-yolov5:d83ee6a
+    check_every: 5
+    strongsort_container_arm64: mbari/strongsort-yolov5:arm64-1.10.0
+    strongsort_container: mbari/strongsort-yolov5:1.10.0
     strongsort_track_config: s3://localtrack/models/track-config/strong_sort_benthic.yaml
 
 minio:

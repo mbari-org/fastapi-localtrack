@@ -14,5 +14,7 @@ git_hash=$(git log -1 --format=%h)
 # Run the production compose stack
 docker network inspect minio-net >/dev/null 2>&1 || \
 docker network create minio-net
-GIT_VERSION="${git_hash}" docker-compose -f compose.yml up -d
+GIT_VERSION="${git_hash}" COMPOSE_PROJECT_NAME=fastapi-localtrack docker-compose -f compose.yml up -d
 
+sleep 5
+chown -R ${DOCKER_UID}:${DOCKER_GID} ${DATA_DIR}

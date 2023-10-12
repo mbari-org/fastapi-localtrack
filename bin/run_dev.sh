@@ -13,7 +13,9 @@ git_hash=$(git log -1 --format=%h)
 # Setup the dev network and run the development compose stack
 docker network inspect dev-minio-net >/dev/null 2>&1 || \
 docker network create dev-minio-net
-GIT_VERSION="${git_hash}" docker-compose --env-file .env.dev -f compose.dev.yml up -d
+
+GIT_VERSION="${git_hash}" COMPOSE_PROJECT_NAME=fastapi-localtrack-dev docker-compose --env-file .env.dev -f compose.dev.yml down
+GIT_VERSION="${git_hash}" COMPOSE_PROJECT_NAME=fastapi-localtrack-dev docker-compose --env-file .env.dev -f compose.dev.yml up -d
 
 # Wait for the nginx server to start
 echo "Wait for the nginx server to start"

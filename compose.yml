@@ -45,6 +45,7 @@ services:
   daemon:
     image: mbari/fastapi-localtrack-daemon:${GIT_VERSION}
     container_name: fastapi-localtrack-daemon
+    user: root
     depends_on:
       - fastapi
     env_file:
@@ -53,11 +54,14 @@ services:
       - NOTIFY_URL=${NOTIFY_URL}
       - MODEL_DIR=/models
       - DATABASE_DIR=/sqlite_data
-      - NUM_GPUS=1
+#      - NUM_GPUS=1
+      - NUM_CONCURRENT_PROCS=1
+      - MODE=prod
+      - TEMP_DIR=/temp
     volumes:
       - ./config.yml:/app/config.yml
       - /var/run/docker.sock:/var/run/docker.sock
-      - scratch:/tmp
+      - scratch:/temp
       - ${DATA_DIR}/sqlite_data:/sqlite_data
       - ${MODEL_DIR}:/models
     networks:
@@ -96,7 +100,6 @@ services:
 
 volumes:
     scratch:
-    models:
 
 networks:
   minio-net:
